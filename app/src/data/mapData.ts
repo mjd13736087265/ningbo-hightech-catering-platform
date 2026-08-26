@@ -89,8 +89,8 @@ export const STREET_LABELS: { name: string; lng: number; lat: number }[] = [
   { name: '贵驷街道', lng: 121.625, lat: 29.970 },
 ];
 
-/** 地图视野范围（经纬度包围盒） */
+/** 地图视野范围（ECharts boundingCoords 格式：[[左下角经度最小, 纬度最大], [右上经度最大, 纬度最小]]） */
 export const MAP_BOUNDS: [[number, number], [number, number]] = [
-  [121.545, 29.822],
-  [121.720, 30.018],
+  [121.545, 30.018],
+  [121.720, 29.822],
 ];

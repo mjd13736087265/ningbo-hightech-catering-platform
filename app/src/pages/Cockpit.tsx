@@ -13,6 +13,9 @@ import {
   AlertTriangle, XCircle, Volume2, FileWarning, Cpu, FileText, Eye,
 } from 'lucide-react';
 
+// ─── 地图注册（模块级，保证在任何 setOption 之前完成） ────
+echarts.registerMap('gaoxin', GAOXIN_GEOJSON as never);
+
 // ─── 通用小组件 ─────────────────────────────────────────
 
 /** 科技感面板（四角括号边框） */
@@ -84,7 +87,11 @@ function Chart({ option, height, onClick }: {
   useEffect(() => {
     const chart = chartRef.current;
     if (!chart) return;
-    chart.setOption(option, true);
+    try {
+      chart.setOption(option, true);
+    } catch (err) {
+      console.error('[cockpit] setOption failed:', err);
+    }
     if (onClick) {
       chart.off('click');
       chart.on('click', onClick);
@@ -151,9 +158,8 @@ export default function Cockpit() {
     return () => clearInterval(timer);
   }, []);
 
-  // 注册地图
+  // 注册地图（gaoxin 已在模块级注册；此处仅异步加载鄞州区底图）
   useEffect(() => {
-    echarts.registerMap('gaoxin', GAOXIN_GEOJSON as never);
     fetch(`${import.meta.env.BASE_URL}geo/yinzhou.json`)
       .then(r => r.json())
       .then(geo => {
