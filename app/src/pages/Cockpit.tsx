@@ -4,27 +4,25 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '@/context/AppContext';
 import type { Enterprise } from '@/types';
 import { getDeviceStatistics } from '@/data/enterprises';
-import { GAOXIN_GEOJSON, STREET_LINES, STREET_LABELS, MAP_BOUNDS } from '@/data/mapData';
 import EnterpriseDetail from '@/components/EnterpriseDetail';
 import ReportModal from '@/components/ReportModal';
 import DeviceInfoModal from '@/components/DeviceInfoModal';
 import {
   Building2, ClipboardCheck, Wrench, FileCog, ArrowLeft, Maximize, Minimize,
   XCircle, FileWarning, AlertTriangle, Volume2, MapPin, MousePointerClick,
-  ChevronLeft, ChevronRight, Eye, FileText, Cpu, Clock,
+  ChevronLeft, ChevronRight, Eye, FileText, Cpu, Clock, X,
 } from 'lucide-react';
-
-// ─── 地图注册（模块级，保证在任何 setOption 之前完成） ────
-echarts.registerMap('gaoxin', GAOXIN_GEOJSON as never);
 
 // ─── 设计稿基准分辨率（整体等比缩放适配） ─────────────────
 const DESIGN_W = 1920;
 const DESIGN_H = 1080;
 
+// ─── 手绘地图贴图（UI 设计师原图裁切，725×450） ────────────
+const MAP_IMG = `${import.meta.env.BASE_URL}map/hightech-map.png`;
+
 // ─── 通用 ECharts 容器 ──────────────────────────────────
-function Chart({ option, height, onClick }: {
+function Chart({ option, height }: {
   option: echarts.EChartsOption; height: number | string;
-  onClick?: (params: echarts.ECElementEvent) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const chartRef = useRef<echarts.ECharts | null>(null);
@@ -49,11 +47,7 @@ function Chart({ option, height, onClick }: {
     } catch (err) {
       console.error('[cockpit] setOption failed:', err);
     }
-    if (onClick) {
-      chart.off('click');
-      chart.on('click', onClick);
-    }
-  }, [option, onClick]);
+  }, [option]);
 
   return <div ref={ref} style={{ height, width: '100%' }} />;
 }
@@ -104,31 +98,33 @@ function AnimatedNumber({ value, className = '' }: { value: number; className?: 
   return <span className={className}>{display.toLocaleString()}</span>;
 }
 
-// ─── 聚合逻辑（3 公里范围内企业合并为一个点） ─────────────
+// ─── 街道聚合（贴图方案：每个街道一个聚合点，位置按手绘地图热力区标定） ───
 interface Cluster {
-  lng: number;
-  lat: number;
+  key: string;
+  name: string;
+  x: number; // 地图图片上的百分比横坐标
+  y: number; // 地图图片上的百分比纵坐标
   enterprises: Enterprise[];
 }
 
-function clusterEnterprises(enterprises: Enterprise[]): Cluster[] {
-  const LNG_THRESHOLD = 0.032; // ≈ 3km
-  const LAT_THRESHOLD = 0.028;
-  const clusters: Cluster[] = [];
+/** 各街道在手绘地图上的点位（对应热力聚集区，百分比坐标） */
+const STREET_POS: Record<string, { x: number; y: number }> = {
+  贵驷街道: { x: 47, y: 20 },
+  新明街道: { x: 50, y: 41 },
+  聚贤街道: { x: 38, y: 48 },
+  梅墟街道: { x: 66, y: 51 },
+  其他: { x: 57, y: 63 },
+};
+
+function clusterByStreet(enterprises: Enterprise[]): Cluster[] {
+  const map = new Map<string, Enterprise[]>();
   enterprises.forEach(e => {
-    if (!e.longitude || !e.latitude) return;
-    const found = clusters.find(
-      c => Math.abs(c.lng - e.longitude) < LNG_THRESHOLD && Math.abs(c.lat - e.latitude) < LAT_THRESHOLD
-    );
-    if (found) {
-      found.enterprises.push(e);
-      found.lng = found.enterprises.reduce((s, x) => s + x.longitude, 0) / found.enterprises.length;
-      found.lat = found.enterprises.reduce((s, x) => s + x.latitude, 0) / found.enterprises.length;
-    } else {
-      clusters.push({ lng: e.longitude, lat: e.latitude, enterprises: [e] });
-    }
+    const key = STREET_POS[e.street] ? e.street : '其他';
+    map.set(key, [...(map.get(key) ?? []), e]);
   });
-  return clusters;
+  return [...map.entries()].map(([name, list]) => ({
+    key: name, name, ...STREET_POS[name], enterprises: list,
+  }));
 }
 
 /** 效果图配色：1-4 蓝 / 5-9 绿 / 10-19 黄 / 20+ 橙 */
@@ -146,21 +142,36 @@ function riskLevel(e: Enterprise): { label: string; cls: string } {
   return { label: '低', cls: 'text-[#1fd0a2] border-[#1fd0a2]/50 bg-[#1fd0a2]/10' };
 }
 
-/** 周边行政区标注（装饰） */
-const NEIGHBOR_LABELS = [
-  { name: '慈溪市', lng: 121.568, lat: 30.005 },
-  { name: '北仑区', lng: 121.706, lat: 29.895 },
-  { name: '鄞州区', lng: 121.556, lat: 29.862 },
-  { name: '奉化区', lng: 121.583, lat: 29.826 },
-  { name: '宁海县', lng: 121.660, lat: 29.824 },
-];
+// ─── 地图缩略图（引导区 / 位置定位共用） ──────────────────
+function MapThumb({ markers, className = '' }: {
+  markers: { x: number; y: number; color?: string; size?: number }[];
+  className?: string;
+}) {
+  return (
+    <div className={`relative overflow-hidden ${className}`}>
+      <img src={MAP_IMG} alt="高新区地图" draggable={false}
+        className="absolute inset-0 w-full h-full object-cover opacity-75" />
+      {markers.map((m, i) => {
+        const s = m.size ?? 8;
+        const c = m.color ?? '#ffd32a';
+        return (
+          <span key={i} className="absolute rounded-full"
+            style={{
+              left: `${m.x}%`, top: `${m.y}%`, width: s, height: s,
+              transform: 'translate(-50%,-50%)',
+              background: c, boxShadow: `0 0 ${s}px ${c}`,
+            }} />
+        );
+      })}
+    </div>
+  );
+}
 
 // ═══ 主页面 ═══════════════════════════════════════════════
 export default function Cockpit() {
   const { state, dispatch, statistics } = useApp();
   const navigate = useNavigate();
   const [now, setNow] = useState(new Date());
-  const [yinzhouReady, setYinzhouReady] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [selectedCluster, setSelectedCluster] = useState<Cluster | null>(null);
   const [selectedEnt, setSelectedEnt] = useState<Enterprise | null>(null);
@@ -194,17 +205,6 @@ export default function Cockpit() {
     return () => window.removeEventListener('resize', fit);
   }, []);
 
-  // 鄞州区底图
-  useEffect(() => {
-    fetch(`${import.meta.env.BASE_URL}geo/yinzhou.json`)
-      .then(r => r.json())
-      .then(geo => {
-        echarts.registerMap('yinzhou', geo);
-        setYinzhouReady(true);
-      })
-      .catch(() => setYinzhouReady(false));
-  }, []);
-
   // 统计口径
   const stats = useMemo(() => {
     const total = enterprises.length;
@@ -219,164 +219,9 @@ export default function Cockpit() {
     return { total, inspected, deviceGoodRate, exceedList, expiredPermit, noFacility, noiseComplaint };
   }, [enterprises, deviceStats]);
 
-  const clusters = useMemo(() => clusterEnterprises(enterprises), [enterprises]);
+  const clusters = useMemo(() => clusterByStreet(enterprises), [enterprises]);
 
   const onlineRate = deviceStats.total ? Math.round((deviceStats.online / deviceStats.total) * 100) : 0;
-
-  // ─── 地图配置 ───
-  const mapOption = useMemo((): echarts.EChartsOption => {
-    const geoIndex = yinzhouReady ? 1 : 0;
-    const geos: echarts.EChartsOption['geo'] = [];
-    if (yinzhouReady) {
-      geos.push({
-        map: 'yinzhou',
-        boundingCoords: MAP_BOUNDS,
-        silent: true,
-        z: 1,
-        itemStyle: {
-          areaColor: 'rgba(10, 28, 62, 0.6)',
-          borderColor: 'rgba(45, 95, 170, 0.45)',
-          borderWidth: 1,
-        },
-        label: { show: false },
-      });
-    }
-    geos.push({
-      map: 'gaoxin',
-      boundingCoords: MAP_BOUNDS,
-      z: 2,
-      silent: true,
-      itemStyle: {
-        areaColor: {
-          type: 'radial', x: 0.5, y: 0.45, r: 0.85,
-          colorStops: [
-            { offset: 0, color: 'rgba(21, 66, 138, 0.95)' },
-            { offset: 1, color: 'rgba(8, 26, 60, 0.98)' },
-          ],
-        } as never,
-        borderColor: '#3fd2ff',
-        borderWidth: 2,
-        shadowColor: 'rgba(63, 210, 255, 0.7)',
-        shadowBlur: 24,
-      },
-      label: { show: false },
-    });
-
-    return {
-      backgroundColor: 'transparent',
-      geo: geos,
-      series: [
-        // 街道分界线
-        {
-          type: 'lines', coordinateSystem: 'geo', geoIndex, polyline: true, silent: true, z: 3,
-          lineStyle: { color: 'rgba(94, 200, 255, 0.3)', width: 1, type: 'dashed' },
-          data: STREET_LINES.map(l => ({ coords: l.path })),
-        } as never,
-        // 街道标注
-        {
-          type: 'scatter', coordinateSystem: 'geo', geoIndex, silent: true, z: 4, symbol: 'none',
-          label: {
-            show: true, formatter: (p: { name: string }) => p.name,
-            color: 'rgba(150, 205, 255, 0.9)', fontSize: 12, fontWeight: 600,
-            textShadowColor: 'rgba(0,10,30,0.9)', textShadowBlur: 4,
-          },
-          data: STREET_LABELS.map(s => ({ name: s.name, value: [s.lng, s.lat] })),
-        } as never,
-        // 周边行政区标注
-        {
-          type: 'scatter', coordinateSystem: 'geo', geoIndex, silent: true, z: 4, symbol: 'none',
-          label: {
-            show: true, formatter: (p: { name: string }) => p.name,
-            color: 'rgba(110, 155, 215, 0.55)', fontSize: 12,
-          },
-          data: NEIGHBOR_LABELS.map(s => ({ name: s.name, value: [s.lng, s.lat] })),
-        } as never,
-        // 聚合热力点（柔光气泡 + 白色数量）
-        {
-          type: 'scatter', coordinateSystem: 'geo', geoIndex, z: 5,
-          symbolSize: (val: number[]) => Math.min(30 + val[2] * 1.5, 68),
-          label: {
-            show: true, position: 'inside',
-            formatter: (p: { data: { count: number } }) => String(p.data.count),
-            color: '#ffffff', fontSize: 15, fontWeight: 700,
-            textShadowColor: 'rgba(0,0,0,0.6)', textShadowBlur: 3,
-          },
-          tooltip: {
-            formatter: (p: { data: { count: number; streets: string } }) =>
-              `<div style="font-weight:600">该区域企业数量：${p.data.count} 家</div>` +
-              `<div style="opacity:.75">覆盖：${p.data.streets}</div>` +
-              `<div style="opacity:.6;margin-top:2px">点击查看企业清单</div>`,
-          },
-          data: clusters.map(c => {
-            const color = clusterColor(c.enterprises.length);
-            return {
-              name: `${c.enterprises.length}家企业`,
-              value: [c.lng, c.lat, c.enterprises.length],
-              count: c.enterprises.length,
-              streets: [...new Set(c.enterprises.map(e => e.street))].join('、'),
-              cluster: c,
-              itemStyle: {
-                color: {
-                  type: 'radial', x: 0.5, y: 0.5, r: 0.5,
-                  colorStops: [
-                    { offset: 0, color },
-                    { offset: 0.65, color: color + 'cc' },
-                    { offset: 1, color: color + '33' },
-                  ],
-                } as never,
-                shadowColor: color,
-                shadowBlur: 18,
-              },
-            };
-          }),
-        } as never,
-      ],
-    };
-  }, [clusters, yinzhouReady]);
-
-  const handleMapClick = (params: echarts.ECElementEvent) => {
-    const data = params.data as { cluster?: Cluster } | undefined;
-    if (data?.cluster) {
-      setSelectedCluster(data.cluster);
-      setSelectedEnt(null);
-      setTablePage(1);
-    }
-  };
-
-  // ─── 小地图（左下导航 + 位置定位共用） ───
-  const miniMapOption = useMemo((): echarts.EChartsOption => ({
-    backgroundColor: 'transparent',
-    geo: [{
-      map: 'gaoxin', boundingCoords: MAP_BOUNDS, silent: true,
-      itemStyle: { areaColor: 'rgba(15,45,100,0.9)', borderColor: 'rgba(63,210,255,0.6)', borderWidth: 1 },
-      label: { show: false },
-    }],
-    series: [{
-      type: 'scatter', coordinateSystem: 'geo', silent: true,
-      symbolSize: 5,
-      itemStyle: { color: '#ffd32a', shadowColor: '#ffd32a', shadowBlur: 4 },
-      data: clusters.map(c => ({ value: [c.lng, c.lat] })),
-    } as never],
-  }), [clusters]);
-
-  const locationMapOption = useMemo((): echarts.EChartsOption => ({
-    backgroundColor: 'transparent',
-    geo: [{
-      map: 'gaoxin', boundingCoords: MAP_BOUNDS, silent: true,
-      itemStyle: { areaColor: 'rgba(15,45,100,0.9)', borderColor: 'rgba(63,210,255,0.6)', borderWidth: 1 },
-      label: { show: false },
-    }],
-    series: selectedEnt ? [{
-      type: 'effectScatter', coordinateSystem: 'geo', silent: true,
-      symbolSize: 12, rippleEffect: { brushType: 'stroke', scale: 3 },
-      itemStyle: { color: '#ff4d5e', shadowColor: '#ff4d5e', shadowBlur: 10 },
-      data: [{ value: [selectedEnt.longitude, selectedEnt.latitude] }],
-      label: {
-        show: true, position: 'bottom', formatter: selectedEnt.actualAddress,
-        color: '#9fd0ff', fontSize: 10,
-      },
-    } as never] : [],
-  }), [selectedEnt]);
 
   // ─── 月度登记趋势（渐变柱状图） ───
   const trendOption = useMemo((): echarts.EChartsOption => ({
@@ -443,6 +288,11 @@ export default function Cockpit() {
     }
   };
 
+  const closeOverlay = () => {
+    setSelectedCluster(null);
+    setSelectedEnt(null);
+  };
+
   const pad = (n: number) => String(n).padStart(2, '0');
 
   // 本月/上月
@@ -451,7 +301,7 @@ export default function Cockpit() {
     ? Math.round((monthDiff / statistics.lastMonthCount) * 100)
     : 0;
 
-  // 底部表格分页
+  // 浮层表格分页
   const PAGE_SIZE = 5;
   const clusterList = selectedCluster?.enterprises ?? [];
   const totalPages = Math.max(1, Math.ceil(clusterList.length / PAGE_SIZE));
@@ -479,6 +329,10 @@ export default function Cockpit() {
   const maxStreet = Math.max(...statistics.streetDistribution.map(s => s.count), 1);
   const maxBiz = Math.max(...statistics.businessTypeDistribution.map(s => s.count), 1);
   const scaleTotal = Math.max(statistics.scaleDistribution.reduce((s, x) => s + x.count, 0), 1);
+
+  const selectedPos = selectedEnt
+    ? (STREET_POS[selectedEnt.street] ?? STREET_POS['其他'])
+    : null;
 
   return (
     <div className="fixed inset-0 overflow-hidden" style={{ background: '#01060f' }}>
@@ -540,7 +394,7 @@ export default function Cockpit() {
         </header>
 
         {/* ═══ 主区域 ═══ */}
-        <div className="flex-1 min-h-0 grid gap-2.5 px-3 pt-2.5" style={{ gridTemplateColumns: '330px 1fr 350px' }}>
+        <div className="flex-1 min-h-0 grid gap-2.5 px-3 pt-2.5 pb-3" style={{ gridTemplateColumns: '330px 1fr 350px' }}>
 
           {/* ─── 左列 ─── */}
           <div className="flex flex-col gap-2.5 min-h-0">
@@ -649,19 +503,41 @@ export default function Cockpit() {
               })}
             </div>
 
-            {/* 地图 */}
-            <Panel title="高新区企业热力分布" className="flex-1 min-h-0" bodyClassName="!p-0 relative">
-              <Chart option={mapOption} height="100%" onClick={handleMapClick} />
-              {/* 图例 */}
-              <div className="absolute left-0 right-0 bottom-1 flex items-center justify-center gap-5 text-[11px] text-[#a9c8ec]">
-                <span className="text-[#7fa8d9]">企业数量（聚合热力）</span>
-                {[['#2f7bff', '1-4 家'], ['#1fd0a2', '5-9 家'], ['#ffd32a', '10-19 家'], ['#ff7a1a', '20+ 家']].map(([c, t]) => (
-                  <span key={t} className="flex items-center gap-1.5">
-                    <span className="w-[10px] h-[10px] rounded-full" style={{ background: c, boxShadow: `0 0 8px ${c}` }} />
-                    {t}
-                  </span>
-                ))}
-              </div>
+            {/* 地图（手绘贴图 + 街道聚合气泡，标题与图例已烘焙在图内） */}
+            <Panel className="flex-1 min-h-0" bodyClassName="!p-0 relative">
+              <img src={MAP_IMG} alt="高新区企业热力分布" draggable={false}
+                className="absolute inset-0 w-full h-full object-fill" />
+              {clusters.map(c => {
+                const count = c.enterprises.length;
+                const color = clusterColor(count);
+                const size = Math.min(38 + count * 1.8, 78);
+                return (
+                  <div key={c.key} className="absolute"
+                    style={{ left: `${c.x}%`, top: `${c.y}%`, transform: 'translate(-50%,-50%)' }}>
+                    <button
+                      onClick={() => { setSelectedCluster(c); setSelectedEnt(null); setTablePage(1); }}
+                      className="relative group flex items-center justify-center rounded-full transition-transform duration-200 hover:scale-110 cursor-pointer"
+                      style={{
+                        width: size, height: size,
+                        background: `radial-gradient(circle, ${color} 0%, ${color}cc 52%, ${color}1e 100%)`,
+                        boxShadow: `0 0 ${Math.round(size / 1.8)}px ${color}99`,
+                      }}>
+                      {/* 外圈装饰环（效果图同款） */}
+                      <span className="absolute rounded-full border pointer-events-none animate-pulse"
+                        style={{ inset: -9, borderColor: `${color}55` }} />
+                      <span className="text-white font-bold drop-shadow-md" style={{ fontSize: count >= 10 ? 17 : 15 }}>
+                        {count}
+                      </span>
+                      {/* hover 提示 */}
+                      <span className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-[3px] px-2.5 py-1.5 text-[11px] leading-relaxed text-[#d7f5ff] opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity z-20"
+                        style={{ background: 'rgba(6,20,45,.95)', border: '1px solid rgba(63,210,255,.4)' }}>
+                        <span className="font-bold">{c.name} · 企业数量：{count} 家</span><br />
+                        <span className="text-[#7fa8d9]">点击查看企业清单</span>
+                      </span>
+                    </button>
+                  </div>
+                );
+              })}
             </Panel>
 
             {/* 企业规模 + 合规汇总 */}
@@ -743,7 +619,7 @@ export default function Cockpit() {
                         未安装净化设施: stats.noFacility,
                         噪声扰民投诉: stats.noiseComplaint,
                       };
-                      setSelectedCluster({ lng: 0, lat: 0, enterprises: listMap[w.label] });
+                      setSelectedCluster({ key: w.label, name: w.label, x: 50, y: 50, enterprises: listMap[w.label] });
                       setSelectedEnt(null);
                       setTablePage(1);
                     }}
@@ -784,169 +660,188 @@ export default function Cockpit() {
           </div>
         </div>
 
-        {/* ═══ 底部交互条 ═══ */}
-        <div className="h-[218px] flex-shrink-0 grid gap-2.5 px-3 py-2.5" style={{ gridTemplateColumns: '320px 1fr 440px' }}>
-          {/* 操作引导 */}
-          <div className="rounded-[4px] border relative overflow-hidden flex"
-            style={{ background: 'linear-gradient(180deg, rgba(15,40,88,0.62), rgba(7,20,48,0.62))', borderColor: 'rgba(56,130,220,0.38)' }}>
-            <div className="w-[118px] flex flex-col justify-center px-4 flex-shrink-0">
-              <MousePointerClick className="w-6 h-6 text-[#4de3ff] mb-2" />
-              <div className="text-[16px] font-bold text-[#4de3ff] leading-snug">点击聚合点<br />展开企业列表</div>
-              <div className="text-[10px] text-[#5f83b8] mt-2 leading-relaxed">注：地图上聚合点为 3 公里范围内企业数量，点击可查看详细企业列表</div>
-            </div>
-            <div className="flex-1 relative">
-              <Chart option={miniMapOption} height="100%" />
-            </div>
-          </div>
+        {/* ═══ 点击聚合点后的企业列表浮层 ═══ */}
+        {selectedCluster && (
+          <>
+            <div className="absolute inset-0 z-40" style={{ background: 'rgba(1,6,15,.6)' }} onClick={closeOverlay} />
+            <div className="absolute inset-x-3 bottom-3 z-50 h-[280px] grid gap-2.5" style={{ gridTemplateColumns: '280px 1fr 430px' }}>
+              {/* 操作引导 */}
+              <div className="rounded-[4px] border relative overflow-hidden flex"
+                style={{ background: 'linear-gradient(180deg, rgba(15,40,88,0.92), rgba(7,20,48,0.92))', borderColor: 'rgba(56,130,220,0.38)' }}>
+                <div className="w-[108px] flex flex-col justify-center px-3.5 flex-shrink-0">
+                  <MousePointerClick className="w-6 h-6 text-[#4de3ff] mb-2" />
+                  <div className="text-[15px] font-bold text-[#4de3ff] leading-snug">点击聚合点<br />展开企业列表</div>
+                  <div className="text-[10px] text-[#5f83b8] mt-2 leading-relaxed">地图上聚合点为该片区域企业数量，点击可查看详细企业列表</div>
+                </div>
+                <MapThumb className="flex-1"
+                  markers={clusters.map(c => ({
+                    x: c.x, y: c.y,
+                    color: clusterColor(c.enterprises.length),
+                    size: c.key === selectedCluster.key ? 13 : 8,
+                  }))} />
+              </div>
 
-          {/* 聚合点企业列表 */}
-          <div className="rounded-[4px] border flex flex-col overflow-hidden"
-            style={{ background: 'linear-gradient(180deg, rgba(15,40,88,0.62), rgba(7,20,48,0.62))', borderColor: 'rgba(56,130,220,0.38)' }}>
-            <div className="flex items-center gap-2 px-3 h-[34px] flex-shrink-0 border-b" style={{ borderColor: 'rgba(56,130,220,0.22)' }}>
-              <span className="w-[3px] h-[13px] rounded-full" style={{ background: 'linear-gradient(180deg,#4de3ff,#1e6fff)' }} />
-              <span className="text-[13px] font-bold text-[#dcecff]">
-                {selectedCluster ? `聚合点企业列表（${clusterList.length} 家）` : '聚合点企业列表'}
-              </span>
-              {!selectedCluster && <span className="text-[10px] text-[#5f83b8] ml-1">请先点击地图上的聚合点</span>}
-            </div>
-            <div className="flex-1 min-h-0 overflow-hidden">
-              <table className="w-full text-[11px]">
-                <thead>
-                  <tr className="text-[#7fa8d9]" style={{ background: 'rgba(30,80,160,.22)' }}>
-                    {['序号', '企业名称', '经营类型', '净化设施状态', '在线状态', '最近清洗时间', '排放状态', '风险等级', '操作'].map(h => (
-                      <th key={h} className="px-2 py-[6px] font-normal text-left whitespace-nowrap">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {pageList.map((e, i) => {
-                    const risk = riskLevel(e);
-                    const online = (e.devices ?? []).some(d => d.online);
-                    return (
-                      <tr key={e.id} className="border-t hover:bg-[#1e6fff]/10 transition-colors" style={{ borderColor: 'rgba(56,130,220,0.14)' }}>
-                        <td className="px-2 py-[6px] text-[#7fa8d9] font-mono">{(tablePage - 1) * PAGE_SIZE + i + 1}</td>
-                        <td className="px-2 py-[6px] text-[#e6f3ff] whitespace-nowrap max-w-[130px] truncate">{e.storeName}</td>
-                        <td className="px-2 py-[6px] text-[#a9c8ec]">{e.businessType}</td>
-                        <td className="px-2 py-[6px]">{e.hasPretreatment ? <span className="text-[#1fd0a2]">正常</span> : <span className="text-[#ff9f43]">未安装</span>}</td>
-                        <td className="px-2 py-[6px]">{online ? <span className="text-[#4de3ff]">在线</span> : <span className="text-[#7fa8d9]">离线</span>}</td>
-                        <td className="px-2 py-[6px] text-[#a9c8ec] font-mono">{e.lastMaintenanceDate || '—'}</td>
-                        <td className="px-2 py-[6px]">{e.emissionExceed === '超标' ? <span className="text-[#ff4d5e] font-bold">超标</span> : <span className="text-[#1fd0a2]">正常</span>}</td>
-                        <td className="px-2 py-[6px]">
-                          <span className={`px-1.5 py-0.5 rounded-[3px] border text-[10px] ${risk.cls}`}>{risk.label}</span>
-                        </td>
-                        <td className="px-2 py-[6px]">
-                          <button onClick={() => setSelectedEnt(e)}
-                            className="text-[#4de3ff] hover:text-white transition-colors">查看</button>
-                        </td>
+              {/* 聚合点企业列表 */}
+              <div className="rounded-[4px] border flex flex-col overflow-hidden"
+                style={{ background: 'linear-gradient(180deg, rgba(15,40,88,0.92), rgba(7,20,48,0.92))', borderColor: 'rgba(56,130,220,0.38)' }}>
+                <div className="flex items-center gap-2 px-3 h-[34px] flex-shrink-0 border-b" style={{ borderColor: 'rgba(56,130,220,0.22)' }}>
+                  <span className="w-[3px] h-[13px] rounded-full" style={{ background: 'linear-gradient(180deg,#4de3ff,#1e6fff)' }} />
+                  <span className="text-[13px] font-bold text-[#dcecff]">
+                    聚合点企业列表（{clusterList.length} 家）
+                  </span>
+                  <span className="text-[10px] text-[#5f83b8] ml-1">{selectedCluster.name}</span>
+                  <span className="flex-1" />
+                  <button onClick={closeOverlay} className="text-[#7fa8d9] hover:text-white transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  <table className="w-full text-[11px]">
+                    <thead>
+                      <tr className="text-[#7fa8d9]" style={{ background: 'rgba(30,80,160,.22)' }}>
+                        {['序号', '企业名称', '经营类型', '净化设施状态', '在线状态', '最近清洗时间', '排放状态', '风险等级', '操作'].map(h => (
+                          <th key={h} className="px-2 py-[6px] font-normal text-left whitespace-nowrap">{h}</th>
+                        ))}
                       </tr>
+                    </thead>
+                    <tbody>
+                      {pageList.map((e, i) => {
+                        const risk = riskLevel(e);
+                        const online = (e.devices ?? []).some(d => d.online);
+                        return (
+                          <tr key={e.id}
+                            className={`border-t transition-colors cursor-pointer ${selectedEnt?.id === e.id ? 'bg-[#1e6fff]/20' : 'hover:bg-[#1e6fff]/10'}`}
+                            style={{ borderColor: 'rgba(56,130,220,0.14)' }}
+                            onClick={() => setSelectedEnt(e)}>
+                            <td className="px-2 py-[6px] text-[#7fa8d9] font-mono">{(tablePage - 1) * PAGE_SIZE + i + 1}</td>
+                            <td className="px-2 py-[6px] text-[#e6f3ff] whitespace-nowrap max-w-[130px] truncate">{e.storeName}</td>
+                            <td className="px-2 py-[6px] text-[#a9c8ec]">{e.businessType}</td>
+                            <td className="px-2 py-[6px]">{e.hasPretreatment ? <span className="text-[#1fd0a2]">正常</span> : <span className="text-[#ff9f43]">未安装</span>}</td>
+                            <td className="px-2 py-[6px]">{online ? <span className="text-[#4de3ff]">在线</span> : <span className="text-[#7fa8d9]">离线</span>}</td>
+                            <td className="px-2 py-[6px] text-[#a9c8ec] font-mono">{e.lastMaintenanceDate || '—'}</td>
+                            <td className="px-2 py-[6px]">{e.emissionExceed === '超标' ? <span className="text-[#ff4d5e] font-bold">超标</span> : <span className="text-[#1fd0a2]">正常</span>}</td>
+                            <td className="px-2 py-[6px]">
+                              <span className={`px-1.5 py-0.5 rounded-[3px] border text-[10px] ${risk.cls}`}>{risk.label}</span>
+                            </td>
+                            <td className="px-2 py-[6px]">
+                              <button onClick={ev => { ev.stopPropagation(); setSelectedEnt(e); }}
+                                className="text-[#4de3ff] hover:text-white transition-colors">查看</button>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                {/* 分页 */}
+                <div className="flex items-center justify-center gap-1.5 h-[30px] flex-shrink-0 border-t" style={{ borderColor: 'rgba(56,130,220,0.14)' }}>
+                  <button onClick={() => setTablePage(p => Math.max(1, p - 1))} disabled={tablePage === 1}
+                    className="p-1 rounded text-[#7fa8d9] hover:text-white disabled:opacity-30 transition-colors">
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let p: number;
+                    if (totalPages <= 5) p = i + 1;
+                    else if (tablePage <= 3) p = i + 1;
+                    else if (tablePage >= totalPages - 2) p = totalPages - 4 + i;
+                    else p = tablePage - 2 + i;
+                    return (
+                      <button key={p} onClick={() => setTablePage(p)}
+                        className={`w-[20px] h-[20px] text-[10px] rounded-[3px] font-mono transition-colors ${tablePage === p ? 'text-white' : 'text-[#7fa8d9] hover:text-white'}`}
+                        style={tablePage === p ? { background: 'linear-gradient(135deg,#1e6fff,#4de3ff)' } : { border: '1px solid rgba(56,130,220,.3)' }}>
+                        {p}
+                      </button>
                     );
                   })}
-                  {pageList.length === 0 && (
-                    <tr><td colSpan={9} className="px-2 py-8 text-center text-[#5f83b8]">点击地图上的聚合热力点，此处展开该点位的企业清单</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-            {/* 分页 */}
-            <div className="flex items-center justify-center gap-1.5 h-[30px] flex-shrink-0 border-t" style={{ borderColor: 'rgba(56,130,220,0.14)' }}>
-              <button onClick={() => setTablePage(p => Math.max(1, p - 1))} disabled={tablePage === 1}
-                className="p-1 rounded text-[#7fa8d9] hover:text-white disabled:opacity-30 transition-colors">
-                <ChevronLeft className="w-3.5 h-3.5" />
-              </button>
-              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                let p: number;
-                if (totalPages <= 5) p = i + 1;
-                else if (tablePage <= 3) p = i + 1;
-                else if (tablePage >= totalPages - 2) p = totalPages - 4 + i;
-                else p = tablePage - 2 + i;
-                return (
-                  <button key={p} onClick={() => setTablePage(p)}
-                    className={`w-[20px] h-[20px] text-[10px] rounded-[3px] font-mono transition-colors ${tablePage === p ? 'text-white' : 'text-[#7fa8d9] hover:text-white'}`}
-                    style={tablePage === p ? { background: 'linear-gradient(135deg,#1e6fff,#4de3ff)' } : { border: '1px solid rgba(56,130,220,.3)' }}>
-                    {p}
+                  <button onClick={() => setTablePage(p => Math.min(totalPages, p + 1))} disabled={tablePage === totalPages}
+                    className="p-1 rounded text-[#7fa8d9] hover:text-white disabled:opacity-30 transition-colors">
+                    <ChevronRight className="w-3.5 h-3.5" />
                   </button>
-                );
-              })}
-              <button onClick={() => setTablePage(p => Math.min(totalPages, p + 1))} disabled={tablePage === totalPages}
-                className="p-1 rounded text-[#7fa8d9] hover:text-white disabled:opacity-30 transition-colors">
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-              <span className="text-[10px] text-[#5f83b8] ml-2">共{clusterList.length}条</span>
-            </div>
-          </div>
-
-          {/* 企业详情 */}
-          <div className="rounded-[4px] border flex overflow-hidden"
-            style={{ background: 'linear-gradient(180deg, rgba(15,40,88,0.62), rgba(7,20,48,0.62))', borderColor: 'rgba(56,130,220,0.38)' }}>
-            {selectedEnt ? (
-              <>
-                <div className="flex-1 min-w-0 px-3 py-2 flex flex-col">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[14px] font-bold text-[#e6f3ff] truncate">{selectedEnt.storeName}</span>
-                    <div className="flex gap-1 flex-shrink-0">
-                      <span className="px-1.5 py-0.5 rounded-[3px] text-[10px]" style={{ background: 'rgba(77,227,255,.15)', color: '#4de3ff', border: '1px solid rgba(77,227,255,.4)' }}>{selectedEnt.businessType}</span>
-                      <span className="px-1.5 py-0.5 rounded-[3px] text-[10px]" style={selectedEnt.emissionExceed === '超标'
-                        ? { background: 'rgba(255,77,94,.15)', color: '#ff4d5e', border: '1px solid rgba(255,77,94,.4)' }
-                        : { background: 'rgba(31,208,162,.15)', color: '#1fd0a2', border: '1px solid rgba(31,208,162,.4)' }}>
-                        {selectedEnt.emissionExceed === '超标' ? '超标' : '正常'}
-                      </span>
-                    </div>
-                  </div>
-                  {selectedEnt.panoramaPhotos[0] && (
-                    <img src={selectedEnt.panoramaPhotos[0]} alt="门店" className="w-full h-[52px] object-cover rounded-[3px] mt-1.5 opacity-90" />
-                  )}
-                  <div className="grid grid-cols-2 gap-x-2 gap-y-[3px] mt-1.5 text-[10px] flex-1">
-                    {[
-                      ['地址', selectedEnt.actualAddress],
-                      ['联系人', selectedEnt.owner],
-                      ['联系电话', selectedEnt.phone],
-                      ['净化设施', selectedEnt.hasPretreatment ? '正常' : '未安装'],
-                      ['在线状态', (selectedEnt.devices ?? []).some(d => d.online) ? '在线' : '离线'],
-                      ['最近清洗', selectedEnt.lastMaintenanceDate || '—'],
-                      ['排放状态', selectedEnt.emissionExceed === '超标' ? '超标' : '正常'],
-                      ['风险等级', riskLevel(selectedEnt).label],
-                    ].map(([k, v]) => (
-                      <div key={k} className="flex gap-1 truncate">
-                        <span className="text-[#5f83b8] flex-shrink-0">{k}：</span>
-                        <span className="text-[#c9e2ff] truncate">{v}</span>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="flex gap-1.5 mt-1">
-                    <button onClick={() => openFullDetail(selectedEnt)}
-                      className="flex items-center gap-1 px-2 py-[3px] text-[10px] rounded-[3px] text-white transition-colors"
-                      style={{ background: 'linear-gradient(135deg,#1e6fff,#4de3ff)' }}>
-                      <Eye className="w-3 h-3" />一企一档
-                    </button>
-                    <button onClick={() => setReportEnt(selectedEnt)}
-                      className="flex items-center gap-1 px-2 py-[3px] text-[10px] rounded-[3px] text-[#c9a7ff] transition-colors hover:brightness-150"
-                      style={{ background: 'rgba(139,92,246,.18)', border: '1px solid rgba(139,92,246,.45)' }}>
-                      <FileText className="w-3 h-3" />报告
-                    </button>
-                    <button onClick={() => setDeviceEnt(selectedEnt)}
-                      className="flex items-center gap-1 px-2 py-[3px] text-[10px] rounded-[3px] text-[#7ef0d4] transition-colors hover:brightness-150"
-                      style={{ background: 'rgba(31,208,162,.14)', border: '1px solid rgba(31,208,162,.45)' }}>
-                      <Cpu className="w-3 h-3" />设备
-                    </button>
-                  </div>
+                  <span className="text-[10px] text-[#5f83b8] ml-2">共{clusterList.length}条</span>
                 </div>
-                <div className="w-[150px] flex-shrink-0 border-l flex flex-col" style={{ borderColor: 'rgba(56,130,220,0.22)' }}>
-                  <div className="flex items-center gap-1 px-2 h-[26px] text-[10px] text-[#7fa8d9] border-b flex-shrink-0" style={{ borderColor: 'rgba(56,130,220,0.22)' }}>
-                    <MapPin className="w-3 h-3 text-[#4de3ff]" />位置定位
-                  </div>
-                  <div className="flex-1">
-                    <Chart option={locationMapOption} height="100%" />
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="flex-1 flex flex-col items-center justify-center text-[#5f83b8] gap-2">
-                <Building2 className="w-8 h-8 opacity-40" />
-                <span className="text-[11px]">在企业列表中点击「查看」<br />此处展示企业详情</span>
               </div>
-            )}
-          </div>
-        </div>
+
+              {/* 企业详情 */}
+              <div className="rounded-[4px] border flex overflow-hidden"
+                style={{ background: 'linear-gradient(180deg, rgba(15,40,88,0.92), rgba(7,20,48,0.92))', borderColor: 'rgba(56,130,220,0.38)' }}>
+                {selectedEnt ? (
+                  <>
+                    <div className="flex-1 min-w-0 px-3 py-2 flex flex-col">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[14px] font-bold text-[#e6f3ff] truncate">{selectedEnt.storeName}</span>
+                        <div className="flex gap-1 flex-shrink-0">
+                          <span className="px-1.5 py-0.5 rounded-[3px] text-[10px]" style={{ background: 'rgba(77,227,255,.15)', color: '#4de3ff', border: '1px solid rgba(77,227,255,.4)' }}>{selectedEnt.businessType}</span>
+                          <span className="px-1.5 py-0.5 rounded-[3px] text-[10px]" style={selectedEnt.emissionExceed === '超标'
+                            ? { background: 'rgba(255,77,94,.15)', color: '#ff4d5e', border: '1px solid rgba(255,77,94,.4)' }
+                            : { background: 'rgba(31,208,162,.15)', color: '#1fd0a2', border: '1px solid rgba(31,208,162,.4)' }}>
+                            {selectedEnt.emissionExceed === '超标' ? '超标' : '正常'}
+                          </span>
+                        </div>
+                      </div>
+                      {selectedEnt.panoramaPhotos[0] && (
+                        <img src={selectedEnt.panoramaPhotos[0]} alt="门店" className="w-full h-[62px] object-cover rounded-[3px] mt-1.5 opacity-90" />
+                      )}
+                      <div className="grid grid-cols-2 gap-x-2 gap-y-[4px] mt-2 text-[10px] flex-1">
+                        {[
+                          ['地址', selectedEnt.actualAddress],
+                          ['联系人', selectedEnt.owner],
+                          ['联系电话', selectedEnt.phone],
+                          ['净化设施', selectedEnt.hasPretreatment ? '正常' : '未安装'],
+                          ['在线状态', (selectedEnt.devices ?? []).some(d => d.online) ? '在线' : '离线'],
+                          ['最近清洗', selectedEnt.lastMaintenanceDate || '—'],
+                          ['排放状态', selectedEnt.emissionExceed === '超标' ? '超标' : '正常'],
+                          ['风险等级', riskLevel(selectedEnt).label],
+                        ].map(([k, v]) => (
+                          <div key={k} className="flex gap-1 truncate">
+                            <span className="text-[#5f83b8] flex-shrink-0">{k}：</span>
+                            <span className="text-[#c9e2ff] truncate">{v}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex gap-1.5 mt-1.5">
+                        <button onClick={() => openFullDetail(selectedEnt)}
+                          className="flex items-center gap-1 px-2 py-[3px] text-[10px] rounded-[3px] text-white transition-colors"
+                          style={{ background: 'linear-gradient(135deg,#1e6fff,#4de3ff)' }}>
+                          <Eye className="w-3 h-3" />一企一档
+                        </button>
+                        <button onClick={() => setReportEnt(selectedEnt)}
+                          className="flex items-center gap-1 px-2 py-[3px] text-[10px] rounded-[3px] text-[#c9a7ff] transition-colors hover:brightness-150"
+                          style={{ background: 'rgba(139,92,246,.18)', border: '1px solid rgba(139,92,246,.45)' }}>
+                          <FileText className="w-3 h-3" />报告
+                        </button>
+                        <button onClick={() => setDeviceEnt(selectedEnt)}
+                          className="flex items-center gap-1 px-2 py-[3px] text-[10px] rounded-[3px] text-[#7ef0d4] transition-colors hover:brightness-150"
+                          style={{ background: 'rgba(31,208,162,.14)', border: '1px solid rgba(31,208,162,.45)' }}>
+                          <Cpu className="w-3 h-3" />设备
+                        </button>
+                      </div>
+                    </div>
+                    <div className="w-[150px] flex-shrink-0 border-l flex flex-col" style={{ borderColor: 'rgba(56,130,220,0.22)' }}>
+                      <div className="flex items-center gap-1 px-2 h-[26px] text-[10px] text-[#7fa8d9] border-b flex-shrink-0" style={{ borderColor: 'rgba(56,130,220,0.22)' }}>
+                        <MapPin className="w-3 h-3 text-[#4de3ff]" />位置定位
+                      </div>
+                      <div className="flex-1 relative">
+                        {selectedPos && (
+                          <MapThumb className="absolute inset-0"
+                            markers={[{ x: selectedPos.x, y: selectedPos.y, color: '#ff4d5e', size: 10 }]} />
+                        )}
+                        <div className="absolute inset-x-0 bottom-0 px-1.5 py-1 text-[9px] text-[#9fd0ff] truncate text-center"
+                          style={{ background: 'rgba(3,12,30,.75)' }}>
+                          {selectedEnt.actualAddress}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex-1 flex flex-col items-center justify-center text-[#5f83b8] gap-2">
+                    <Building2 className="w-8 h-8 opacity-40" />
+                    <span className="text-[11px] text-center">在企业列表中点击「查看」<br />此处展示企业详情</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* 一企一档抽屉 + 弹窗 */}
