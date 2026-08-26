@@ -153,7 +153,7 @@ export default function ReportModal({ open, onClose, enterprise }: Props) {
                 <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
                   report.fileType === 'pdf' ? 'bg-red-50 text-red-500' : 'bg-emerald-50 text-emerald-500'
                 }`}>
-                  {report.fileType === 'pdf' ? <FileText className="w-4.5 h-4.5" /> : <ImageIcon className="w-4.5 h-4.5" />}
+                  {report.fileType === 'pdf' ? <FileText className="w-5 h-5" /> : <ImageIcon className="w-5 h-5" />}
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-slate-800 truncate">{report.name}</div>
