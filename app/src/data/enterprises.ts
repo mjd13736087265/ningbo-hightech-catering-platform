@@ -1,27 +1,54 @@
-import type { Enterprise } from '@/types';
+import type { Enterprise, MonitorDevice, ReportFile } from '@/types';
 
 export const STREETS = ['新明街道', '梅墟街道', '聚贤街道', '贵驷街道', '其他'] as const;
 export const BUSINESS_TYPES = ['酒店', '饭店', '快餐店', '小吃店', '美食铺', '其他'] as const;
+
+/** 各街道在宁波高新区内的大致中心坐标（用于企业点位集聚分布） */
+export const STREET_CENTERS: Record<string, { lng: number; lat: number }> = {
+  新明街道: { lng: 121.615, lat: 29.893 },
+  梅墟街道: { lng: 121.662, lat: 29.868 },
+  聚贤街道: { lng: 121.593, lat: 29.878 },
+  贵驷街道: { lng: 121.628, lat: 29.972 },
+  其他: { lng: 121.622, lat: 29.918 },
+};
 
 const FIRST_NAMES = ['李', '王', '张', '刘', '陈', '杨', '赵', '黄', '周', '吴', '徐', '孙', '胡', '朱', '高', '林'];
 const LAST_NAMES = ['伟', '芳', '娜', '敏', '静', '丽', '强', '磊', '军', '洋', '勇', '艳', '杰', '涛', '明', '超'];
 const SHOP_PREFIXES = ['江南', '老北京', '川味', '外婆', '乡村', '鲜味', '金牌', '美味', '老字号', '正宗', '特色', '家常'];
 const SHOP_SUFFIXES = ['餐厅', '饭店', '酒楼', '餐馆', '食府', '面馆', '饺子馆', '火锅城', '大排档', '小吃', '快餐', '烧烤'];
 
+// ─── 种子随机数（保证每次加载数据稳定一致） ──────────────
+
+function mulberry32(seed: number) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0; a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const rng = mulberry32(20260826);
+
 function randomPick<T>(arr: readonly T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
+  return arr[Math.floor(rng() * arr.length)];
 }
 
 function randomInt(min: number, max: number): number {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
+  return Math.floor(rng() * (max - min + 1)) + min;
 }
 
 function randomFloat(min: number, max: number): number {
-  return parseFloat((Math.random() * (max - min) + min).toFixed(1));
+  return parseFloat((rng() * (max - min) + min).toFixed(1));
+}
+
+function randomFloat2(min: number, max: number): number {
+  return parseFloat((rng() * (max - min) + min).toFixed(2));
 }
 
 function randomName(): string {
-  return randomPick(FIRST_NAMES) + randomPick(LAST_NAMES) + (Math.random() > 0.5 ? randomPick(LAST_NAMES) : '');
+  return randomPick(FIRST_NAMES) + randomPick(LAST_NAMES) + (rng() > 0.5 ? randomPick(LAST_NAMES) : '');
 }
 
 function randomPhone(): string {
@@ -107,15 +134,75 @@ export function calcPowerFromStoveCount(count: number): number {
   return parseFloat((count * 1.67).toFixed(2));
 }
 
+// ─── 监测设备造假数据 ──────────────────────────────
+
+function generateDevices(enterpriseIndex: number): MonitorDevice[] {
+  const count = randomInt(1, 3);
+  const devices: MonitorDevice[] = [];
+  for (let j = 0; j < count; j++) {
+    const online = rng() > 0.12;
+    const purifierStatus: MonitorDevice['purifierStatus'] =
+      !online ? '关闭' : rng() > 0.9 ? '故障' : rng() > 0.25 ? '运行' : '关闭';
+    const fanStatus: MonitorDevice['fanStatus'] = online && rng() > 0.3 ? '运行' : '关闭';
+    const minute = randomInt(0, 59);
+    const second = randomInt(10, 59);
+    devices.push({
+      id: `D${enterpriseIndex}-${j}`,
+      mn: `260${randomPick(['1', '3'])}${String(randomInt(10000, 99999))}${j}`,
+      online,
+      fumeConcentration: online ? randomFloat2(0, rng() > 0.92 ? 2.8 : 1.6) : 0,
+      particleConcentration: online ? randomFloat2(0, 1.5) : 0,
+      nmhc: online ? randomFloat2(0, rng() > 0.9 ? 11.5 : 9.5) : 0,
+      purifierCurrent: purifierStatus === '运行' ? randomFloat2(0.5, 6) : 0,
+      purifierStatus,
+      fanCurrent: fanStatus === '运行' ? randomFloat2(2, 8) : 0,
+      fanStatus,
+      dataTime: `2026-08-26 11:${String(minute).padStart(2, '0')}:${String(second).padStart(2, '0')}`,
+    });
+  }
+  return devices;
+}
+
+// ─── 内置示例报告 ──────────────────────────────────
+
+function generateReports(enterpriseIndex: number, hasCMA: boolean): ReportFile[] {
+  const reports: ReportFile[] = [];
+  if (hasCMA) {
+    reports.push({
+      id: `R${enterpriseIndex}-cma`,
+      name: '油烟排放检测报告（CMA）.pdf',
+      fileType: 'pdf',
+      url: `${import.meta.env.BASE_URL}reports/cma-sample.pdf`,
+      size: 48600,
+      uploadTime: '2026-08-12 14:30:00',
+      source: 'builtin',
+    });
+  }
+  if (rng() > 0.45) {
+    reports.push({
+      id: `R${enterpriseIndex}-clean`,
+      name: '油烟净化设施清洗维护记录.pdf',
+      fileType: 'pdf',
+      url: `${import.meta.env.BASE_URL}reports/cleaning-sample.pdf`,
+      size: 39200,
+      uploadTime: '2026-07-28 09:15:00',
+      source: 'builtin',
+    });
+  }
+  return reports;
+}
+
+// ─── 企业数据生成 ──────────────────────────────────
+
 export function generateEnterprises(count: number = 128): Enterprise[] {
   const enterprises: Enterprise[] = [];
 
   for (let i = 0; i < count; i++) {
     const street = randomPick(STREETS);
     const businessType = randomPick(BUSINESS_TYPES);
-    const hasPermit = Math.random() > 0.4;
-    const envRecord = Math.random() > 0.35 ? '已备案' : '未备案';
-    const hasPretreatment = Math.random() > 0.3;
+    const hasPermit = rng() > 0.4;
+    const envRecord = rng() > 0.35 ? '已备案' : '未备案';
+    const hasPretreatment = rng() > 0.3;
     const shopName = randomPick(SHOP_PREFIXES) + randomPick(SHOP_SUFFIXES);
 
     // 先生成基准灶头数（1~10，保留一位小数）
@@ -127,10 +214,15 @@ export function generateEnterprises(count: number = 128): Enterprise[] {
 
     const scale = calculateScale(stovePower, maxStoveCount, hoodArea);
 
+    // 坐标按所属街道中心集聚分布（抖动 ±0.008°，约 ±800m）
+    const center = STREET_CENTERS[street] ?? STREET_CENTERS['其他'];
+    const longitude = parseFloat((center.lng + (rng() - 0.5) * 0.016).toFixed(6));
+    const latitude = parseFloat((center.lat + (rng() - 0.5) * 0.014).toFixed(6));
+
     enterprises.push({
       id: `E${i}`,
       fullName: `宁波市高新区${shopName}有限公司`,
-      storeName: shopName,
+      storeName: `${shopName}${street === '其他' ? '' : `（${street.replace('街道', '')}店）`}`,
       creditCode: generateCreditCode(),
       licenseAddress: `宁波市高新区${street}江南路${randomInt(100, 2000)}号`,
       actualAddress: `宁波市高新区${street}沧海路${randomInt(100, 2000)}号`,
@@ -146,47 +238,52 @@ export function generateEnterprises(count: number = 128): Enterprise[] {
       maxStoveCount,
       hoodArea,
       pollutionPermit: {
-        status: hasPermit ? '已办理' : Math.random() > 0.7 ? '已过期' : '未办理',
+        status: hasPermit ? '已办理' : rng() > 0.7 ? '已过期' : '未办理',
         licenseNo: hasPermit ? `浙甬环许字[202${randomInt(1, 5)}]第${randomInt(1000, 9999)}号` : undefined,
         expiryDate: hasPermit ? generateDate(2025 + randomInt(0, 2), randomInt(1, 12)) : undefined,
       },
       envRecord,
-      longitude: 121.55 + randomInt(-500, 500) / 10000,
-      latitude: 29.88 + randomInt(-500, 500) / 10000,
+      longitude,
+      latitude,
       sensitiveType: randomPick(['居民区', '学校', '医院', '幼儿园', '办公楼', '无'] as const),
       sensitiveDistance: randomInt(10, 200),
-      panoramaPhotos: [`/images/shop${randomInt(1, 4)}.jpg`],
+      panoramaPhotos: [`${import.meta.env.BASE_URL}images/shop${randomInt(1, 4)}.jpg`],
       hasPretreatment,
       noPretreatmentReason: hasPretreatment ? undefined : '经营规模较小，未安装净化设施',
       facilityType: hasPretreatment ? randomPick(['静电式', 'UV光解式', '复合式', '其他'] as const) : '',
-      otherFacilityType: hasPretreatment && Math.random() > 0.8 ? '水喷淋式' : undefined,
+      otherFacilityType: hasPretreatment && rng() > 0.8 ? '水喷淋式' : undefined,
       cleaningCycle: hasPretreatment ? randomPick(['周', '月', '年'] as const) : '',
       cleaningCycleNumber: hasPretreatment ? randomInt(1, 6) : 0,
       cleaningNote: hasPretreatment ? '每月定期清洗' : undefined,
       lastMaintenanceDate: hasPretreatment ? generateDate(2025, randomInt(1, 6)) : '',
-      hasCMA: Math.random() > 0.6,
+      hasCMA: rng() > 0.6,
       cmaReportNo: '',
-      facilityPhotos: hasPretreatment ? [`/images/equipment${randomInt(1, 2)}.jpg`] : [],
-      indoorPipePhotos: [`/images/pipe${randomInt(1, 2)}.jpg`],
-      outdoorPipePhotos: [`/images/pipe${randomInt(1, 2)}.jpg`],
+      facilityPhotos: hasPretreatment ? [`${import.meta.env.BASE_URL}images/equipment${randomInt(1, 2)}.jpg`] : [],
+      indoorPipePhotos: [`${import.meta.env.BASE_URL}images/pipe${randomInt(1, 2)}.jpg`],
+      outdoorPipePhotos: [`${import.meta.env.BASE_URL}images/pipe${randomInt(1, 2)}.jpg`],
       noiseSources: [randomPick(['风机', '油烟净化器', '空调外机', '后厨设备', '其他'] as const)],
-      otherNoiseSource: Math.random() > 0.9 ? '排风扇' : undefined,
+      otherNoiseSource: rng() > 0.9 ? '排风扇' : undefined,
       noiseMeasures: [randomPick(['减震垫', '隔声罩', '消声器', '管道软连接'] as const)],
-      noiseComplaint: Math.random() > 0.85,
+      noiseComplaint: rng() > 0.85,
       noiseComplaintDesc: '',
       noisePhotos: [],
-      directDischarge: Math.random() > 0.9,
+      directDischarge: rng() > 0.9,
       directDischargeLocation: '',
-      facilityMissing: hasPretreatment ? '全部配置' : Math.random() > 0.5 ? '部分未配置' : '完全未配置',
-      emissionExceed: Math.random() > 0.85 ? '超标' : '达标',
+      facilityMissing: hasPretreatment ? '全部配置' : rng() > 0.5 ? '部分未配置' : '完全未配置',
+      emissionExceed: rng() > 0.85 ? '超标' : '达标',
       emissionExceedValue: '',
-      noiseExceed: Math.random() > 0.85 ? '存在扰民现象' : '达标无扰民',
+      noiseExceed: rng() > 0.85 ? '存在扰民现象' : '达标无扰民',
       problemPhotos: [],
       inspectionDate: generateDate(randomInt(2025, 2026), randomInt(1, 12)),
       inspector: randomName(),
       reviewer: '',
       status: '已排查',
+      devices: generateDevices(i),
+      reports: [],
     });
+
+    // 报告依赖 hasCMA 结果，生成后回填
+    enterprises[i].reports = generateReports(i, enterprises[i].hasCMA);
   }
 
   return enterprises;
@@ -248,7 +345,7 @@ export function getStatistics(enterprises: Enterprise[]) {
   const lastMonthCount = enterprises.filter(e => {
     if (!e.inspectionDate) return false;
     const d = new Date(e.inspectionDate);
-    return d.getFullYear() === lastMonthDate.getFullYear() && d.getMonth() + 1 === lastMonthDate.getMonth() + 1;
+    return d.getFullYear() === lastMonthDate.getFullYear() && d.getMonth() === lastMonthDate.getMonth();
   }).length;
 
   const pretreatmentCount = enterprises.filter(e => e.hasPretreatment).length;
@@ -268,4 +365,16 @@ export function getStatistics(enterprises: Enterprise[]) {
     cleaningCycleCount,
     monthlyTrend,
   };
+}
+
+/** 监测设备统计（驾驶舱用） */
+export function getDeviceStatistics(enterprises: Enterprise[]) {
+  const devices = enterprises.flatMap(e => e.devices ?? []);
+  const total = devices.length;
+  const online = devices.filter(d => d.online).length;
+  const fumeExceed = devices.filter(d => d.online && d.fumeConcentration > 2.0).length;
+  const nmhcExceed = devices.filter(d => d.online && d.nmhc > 10).length;
+  const purifierFault = devices.filter(d => d.purifierStatus === '故障').length;
+  const purifierOff = devices.filter(d => d.online && d.purifierStatus === '关闭').length;
+  return { total, online, offline: total - online, fumeExceed, nmhcExceed, purifierFault, purifierOff };
 }

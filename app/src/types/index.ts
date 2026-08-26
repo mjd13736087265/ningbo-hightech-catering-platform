@@ -1,3 +1,32 @@
+/** 油烟在线监测设备 */
+export interface MonitorDevice {
+  id: string;
+  mn: string;                    // 设备MN号
+  online: boolean;               // 是否在线
+  fumeConcentration: number;     // 油烟浓度 mg/m³
+  particleConcentration: number; // 颗粒物浓度 mg/m³
+  nmhc: number;                  // 非甲烷总烃 mg/m³
+  purifierCurrent: number;       // 净化器电流值 A
+  purifierStatus: '运行' | '关闭' | '故障'; // 净化器状态
+  fanCurrent: number;            // 风机电流值 A
+  fanStatus: '运行' | '关闭';    // 风机状态
+  dataTime: string;              // 数据时间
+}
+
+/** 企业档案报告文件 */
+export interface ReportFile {
+  id: string;
+  name: string;
+  fileType: 'pdf' | 'image';
+  /** 内置示例报告：静态资源路径 */
+  url?: string;
+  /** 用户上传报告：base64 dataUrl（localStorage 持久化） */
+  dataUrl?: string;
+  size: number;                  // 字节
+  uploadTime: string;
+  source: 'builtin' | 'uploaded';
+}
+
 export interface Enterprise {
   id: string;
   fullName: string;
@@ -57,6 +86,10 @@ export interface Enterprise {
   inspector: string;
   reviewer: string;
   status: string;
+  /** 监测设备（可能多台） */
+  devices?: MonitorDevice[];
+  /** 内置示例报告 */
+  reports?: ReportFile[];
 }
 
 export interface InspectionForm {

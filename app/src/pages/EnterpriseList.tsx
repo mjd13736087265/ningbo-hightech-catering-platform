@@ -1,9 +1,11 @@
 import { useState, useMemo } from 'react';
 import { useApp } from '@/context/AppContext';
-import { Search, Plus, Filter, ChevronLeft, ChevronRight, Eye, MapPin, Pencil } from 'lucide-react';
+import { Search, Plus, Filter, ChevronLeft, ChevronRight, Eye, MapPin, Pencil, FileUp, Cpu, MonitorPlay } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { STREETS } from '@/data/enterprises';
 import EnterpriseEdit from '@/components/EnterpriseEdit';
+import ReportModal from '@/components/ReportModal';
+import DeviceInfoModal from '@/components/DeviceInfoModal';
 
 export default function EnterpriseList() {
   const { state, dispatch } = useApp();
@@ -15,6 +17,8 @@ export default function EnterpriseList() {
   const [currentPage, setCurrentPage] = useState(1);
   const [editOpen, setEditOpen] = useState(false);
   const [editEnterprise, setEditEnterprise] = useState<typeof state.enterprises[0] | null>(null);
+  const [reportEnterprise, setReportEnterprise] = useState<typeof state.enterprises[0] | null>(null);
+  const [deviceEnterprise, setDeviceEnterprise] = useState<typeof state.enterprises[0] | null>(null);
   const pageSize = 10;
 
   const filtered = useMemo(() => {
@@ -64,13 +68,22 @@ export default function EnterpriseList() {
           <h1 className="text-xl font-semibold text-slate-900">一企一档</h1>
           <p className="text-sm text-slate-500 mt-0.5">共 {filtered.length} 家餐饮企业</p>
         </div>
-        <button
-          onClick={() => navigate('/mobile/inspection')}
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-all hover:-translate-y-0.5 active:scale-[0.98]"
-        >
-          <Plus className="w-4 h-4" />
-          新增排查
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => navigate('/cockpit')}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 text-white text-sm font-medium rounded-lg hover:from-cyan-500 hover:to-blue-500 shadow-lg shadow-blue-600/20 transition-all hover:-translate-y-0.5 active:scale-[0.98]"
+          >
+            <MonitorPlay className="w-4 h-4" />
+            驾驶舱
+          </button>
+          <button
+            onClick={() => navigate('/mobile/inspection')}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-all hover:-translate-y-0.5 active:scale-[0.98]"
+          >
+            <Plus className="w-4 h-4" />
+            新增排查
+          </button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -196,6 +209,22 @@ export default function EnterpriseList() {
                         <Pencil className="w-3.5 h-3.5" />
                         编辑
                       </button>
+                      <button
+                        onClick={() => setReportEnterprise(enterprise)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-violet-600 bg-violet-50 rounded-md hover:bg-violet-100 transition-colors"
+                        title="上传/查看报告"
+                      >
+                        <FileUp className="w-3.5 h-3.5" />
+                        报告
+                      </button>
+                      <button
+                        onClick={() => setDeviceEnterprise(enterprise)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-cyan-600 bg-cyan-50 rounded-md hover:bg-cyan-100 transition-colors"
+                        title="监测设备信息"
+                      >
+                        <Cpu className="w-3.5 h-3.5" />
+                        设备
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -262,6 +291,20 @@ export default function EnterpriseList() {
         open={editOpen}
         onClose={() => { setEditOpen(false); setEditEnterprise(null); }}
         enterprise={editEnterprise}
+      />
+
+      {/* Report Modal */}
+      <ReportModal
+        open={!!reportEnterprise}
+        onClose={() => setReportEnterprise(null)}
+        enterprise={reportEnterprise}
+      />
+
+      {/* Device Info Modal */}
+      <DeviceInfoModal
+        open={!!deviceEnterprise}
+        onClose={() => setDeviceEnterprise(null)}
+        enterprise={deviceEnterprise}
       />
     </div>
   );

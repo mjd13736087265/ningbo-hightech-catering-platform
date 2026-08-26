@@ -4,16 +4,26 @@ import Layout from '@/components/Layout';
 import Dashboard from '@/pages/Dashboard';
 import EnterpriseList from '@/pages/EnterpriseList';
 import MobileInspection from '@/pages/MobileInspection';
+import Cockpit from '@/pages/Cockpit';
 import './App.css';
 
 function AppRoutes() {
   const location = useLocation();
   const isMobileRoute = location.pathname.startsWith('/mobile');
+  const isCockpitRoute = location.pathname.startsWith('/cockpit');
 
   if (isMobileRoute) {
     return (
       <Routes>
         <Route path="/mobile/inspection" element={<MobileInspection />} />
+      </Routes>
+    );
+  }
+
+  if (isCockpitRoute) {
+    return (
+      <Routes>
+        <Route path="/cockpit" element={<Cockpit />} />
       </Routes>
     );
   }

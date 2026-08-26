@@ -1,9 +1,14 @@
+import { useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import { X, MapPin, Phone, Clock, User, Building2, CheckCircle } from 'lucide-react';
+import { X, MapPin, Phone, Clock, User, Building2, CheckCircle, FileUp, Cpu } from 'lucide-react';
+import ReportModal from '@/components/ReportModal';
+import DeviceInfoModal from '@/components/DeviceInfoModal';
 
 export default function EnterpriseDetail() {
   const { state, dispatch } = useApp();
   const { selectedEnterprise: e, drawerOpen } = state;
+  const [reportOpen, setReportOpen] = useState(false);
+  const [deviceOpen, setDeviceOpen] = useState(false);
 
   if (!e) return null;
 
@@ -34,12 +39,28 @@ export default function EnterpriseDetail() {
             <h2 className="text-lg font-semibold text-slate-900">{e.storeName}</h2>
             <p className="text-xs text-slate-500 mt-0.5">{e.fullName}</p>
           </div>
-          <button
-            onClick={handleClose}
-            className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
-          >
-            <X className="w-5 h-5 text-slate-500" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setReportOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-violet-600 bg-violet-50 rounded-lg hover:bg-violet-100 transition-colors"
+            >
+              <FileUp className="w-4 h-4" />
+              上传报告
+            </button>
+            <button
+              onClick={() => setDeviceOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-cyan-600 bg-cyan-50 rounded-lg hover:bg-cyan-100 transition-colors"
+            >
+              <Cpu className="w-4 h-4" />
+              设备信息
+            </button>
+            <button
+              onClick={handleClose}
+              className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
+            >
+              <X className="w-5 h-5 text-slate-500" />
+            </button>
+          </div>
         </div>
 
         <div className="p-6 space-y-6">
@@ -393,6 +414,10 @@ export default function EnterpriseDetail() {
           )}
         </div>
       </div>
+
+      {/* 报告 / 设备弹窗 */}
+      <ReportModal open={reportOpen} onClose={() => setReportOpen(false)} enterprise={e} />
+      <DeviceInfoModal open={deviceOpen} onClose={() => setDeviceOpen(false)} enterprise={e} />
     </>
   );
 }
