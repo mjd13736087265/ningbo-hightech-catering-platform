@@ -4,13 +4,12 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '@/context/AppContext';
 import type { Enterprise } from '@/types';
 import { getDeviceStatistics } from '@/data/enterprises';
-import EnterpriseDetail from '@/components/EnterpriseDetail';
 import ReportModal from '@/components/ReportModal';
 import DeviceInfoModal from '@/components/DeviceInfoModal';
 import {
   Building2, ClipboardCheck, Wrench, FileCog, ArrowLeft, Maximize, Minimize,
   XCircle, FileWarning, AlertTriangle, Volume2, MapPin,
-  ChevronLeft, ChevronRight, Eye, FileText, Cpu, Clock, X, Phone, User,
+  ChevronLeft, ChevronRight, FileText, Cpu, Clock, X, Phone, User,
 } from 'lucide-react';
 
 // ─── 设计稿基准分辨率（整体等比缩放适配） ─────────────────
@@ -192,7 +191,7 @@ function DRow({ k, v, cls = 'text-[#c9e2ff]' }: { k: string; v: React.ReactNode;
 
 // ═══ 主页面 ═══════════════════════════════════════════════
 export default function Cockpit() {
-  const { state, dispatch, statistics } = useApp();
+  const { state, statistics } = useApp();
   const navigate = useNavigate();
   const [now, setNow] = useState(new Date());
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -254,7 +253,10 @@ export default function Cockpit() {
       type: 'category',
       data: statistics.monthlyTrend.map(m => m.month),
       axisLine: { lineStyle: { color: 'rgba(80,140,200,.35)' } },
-      axisLabel: { color: 'rgba(140,185,235,.8)', fontSize: 9, interval: 0, rotate: 0 },
+      axisLabel: {
+        color: 'rgba(140,185,235,.8)', fontSize: 9, interval: 0,
+        formatter: (v: string) => v.includes('-') ? `${parseInt(v.split('-')[1], 10)}月` : v,
+      },
       axisTick: { show: false },
     },
     yAxis: {
@@ -295,11 +297,6 @@ export default function Cockpit() {
       ],
     }],
   }), [deviceStats, onlineRate]);
-
-  const openFullDetail = (e: Enterprise) => {
-    dispatch({ type: 'SELECT_ENTERPRISE', payload: e });
-    dispatch({ type: 'TOGGLE_DRAWER' });
-  };
 
   const toggleFullscreen = () => {
     if (document.fullscreenElement) {
@@ -417,11 +414,11 @@ export default function Cockpit() {
         </header>
 
         {/* ═══ 主区域 ═══ */}
-        <div className="flex-1 min-h-0 grid gap-2.5 px-3 pt-2.5 pb-3" style={{ gridTemplateColumns: '330px 1fr 350px' }}>
+        <div className="flex-1 min-h-0 grid gap-2.5 px-4 pt-2.5 pb-5" style={{ gridTemplateColumns: '330px 1fr 350px' }}>
 
           {/* ─── 左列 ─── */}
           <div className="flex flex-col gap-2.5 min-h-0">
-            <Panel title="企业总览" className="h-[118px]">
+            <Panel title="企业总览" className="h-[112px] flex-shrink-0">
               <div className="grid grid-cols-3 gap-2 h-full items-center">
                 {overviewStats.map(s => {
                   const Icon = s.icon;
@@ -481,13 +478,13 @@ export default function Cockpit() {
               </div>
             </Panel>
 
-            <Panel title="经营场所" subtitle="企业主要场所类型" className="h-[118px]">
+            <Panel title="经营场所" subtitle="企业主要场所类型" className="h-[132px] flex-shrink-0">
               <div className="grid grid-cols-3 gap-2 h-full items-center">
                 {statistics.venueDistribution.map(v => (
-                  <div key={v.name} className="text-center rounded-[4px] py-2"
+                  <div key={v.name} className="text-center rounded-[4px] py-1.5"
                     style={{ background: 'rgba(30,111,255,.08)', border: '1px solid rgba(56,130,220,.25)' }}>
                     <div className="text-[11px] text-[#7fa8d9]">{v.name}</div>
-                    <div className="text-[20px] font-bold font-mono mt-0.5">
+                    <div className="text-[19px] font-bold font-mono mt-0.5">
                       <AnimatedNumber value={v.count} /><span className="text-[10px] font-normal text-[#7fa8d9] ml-0.5">家</span>
                     </div>
                     <div className="text-[11px] font-mono text-[#4de3ff]">{Math.round((v.count / Math.max(statistics.total, 1)) * 100)}%</div>
@@ -564,7 +561,7 @@ export default function Cockpit() {
             </Panel>
 
             {/* 企业规模 + 合规汇总 */}
-            <div className="grid grid-cols-2 gap-2.5 h-[128px] flex-shrink-0">
+            <div className="grid grid-cols-2 gap-2.5 h-[148px] flex-shrink-0">
               <Panel title="企业规模" subtitle="小型 / 中型 / 大型分布" bodyClassName="flex flex-col justify-center">
                 <div className="grid grid-cols-3 gap-2 mb-2">
                   {statistics.scaleDistribution.map(s => (
@@ -579,13 +576,13 @@ export default function Cockpit() {
                     <div key={c} className="h-full" style={{ width: `${(statistics.scaleDistribution[i].count / scaleTotal) * 100}%`, background: c }} />
                   ))}
                 </div>
-                <div className="flex justify-between mt-1 text-[10px] text-[#7fa8d9] font-mono">
+                <div className="flex justify-between mt-1.5 text-[10px] text-[#7fa8d9] font-mono">
                   {statistics.scaleDistribution.map(s => (
                     <span key={s.name}>{s.name} {Math.round((s.count / scaleTotal) * 100)}%</span>
                   ))}
                 </div>
               </Panel>
-              <Panel title="合规汇总" subtitle="净化设施安装与清洗周期设置情况" bodyClassName="flex flex-col justify-center gap-2.5">
+              <Panel title="合规汇总" subtitle="净化设施安装与清洗周期设置情况" bodyClassName="flex flex-col justify-center gap-2">
                 {[
                   { label: '已安装净化设施', value: statistics.pretreatmentCount, color: '#1fd0a2' },
                   { label: '已设置清洗周期', value: statistics.cleaningCycleCount, color: '#4de3ff' },
@@ -607,10 +604,10 @@ export default function Cockpit() {
 
           {/* ─── 右列 ─── */}
           <div className="flex flex-col gap-2.5 min-h-0">
-            <Panel title="监测设备" className="h-[168px]">
+            <Panel title="监测设备" className="h-[160px] flex-shrink-0">
               <div className="flex h-full items-center">
                 <div className="w-[130px] flex-shrink-0">
-                  <Chart option={ringOption} height={128} />
+                  <Chart option={ringOption} height={120} />
                 </div>
                 <div className="flex-1 grid grid-cols-2 gap-x-2 gap-y-3">
                   {[
@@ -656,12 +653,12 @@ export default function Cockpit() {
               })}
             </Panel>
 
-            <Panel title="月度登记趋势" subtitle="近12个月企业登记数量变化" className="h-[178px]"
+            <Panel title="月度登记趋势" subtitle="近12个月企业登记数量变化" className="h-[172px] flex-shrink-0"
               right={<span className="text-[10px] text-[#5f83b8]">近 12 个月 &gt;</span>}>
               <Chart option={trendOption} height="100%" />
             </Panel>
 
-            <Panel title="本月登记动态" subtitle="与上月登记量对比" className="h-[118px]">
+            <Panel title="本月登记动态" subtitle="与上月登记量对比" className="h-[128px] flex-shrink-0">
               <div className="grid grid-cols-3 gap-2 h-full items-center">
                 <div className="text-center">
                   <div className="text-[11px] text-[#7fa8d9]">本月</div>
@@ -683,7 +680,7 @@ export default function Cockpit() {
           </div>
         </div>
 
-        {/* ═══ 点击聚合点 → 企业列表浮层 ═══ */}
+        {/* ═══ 点击聚合点 → 企业列表浮层（居中） ═══ */}
         {selectedCluster && (
           <>
             <div className="absolute inset-0 z-40" style={{ background: 'rgba(1,6,15,.6)' }} onClick={closeOverlay} />
@@ -822,7 +819,7 @@ export default function Cockpit() {
               {/* 位置定位 */}
               <DSection title="位置定位" icon={<MapPin className="w-3.5 h-3.5 text-[#4de3ff]" />}>
                 {selectedPos && (
-                  <MapThumb className="h-[130px] rounded-[3px] border" 
+                  <MapThumb className="h-[130px] rounded-[3px] border"
                     markers={[{ x: selectedPos.x, y: selectedPos.y, color: '#ff4d5e', size: 10 }]} />
                 )}
                 <div className="grid grid-cols-2 gap-x-3 mt-1.5">
@@ -923,11 +920,6 @@ export default function Cockpit() {
 
             {/* 底部操作 */}
             <div className="flex gap-2 px-4 py-2.5 border-t flex-shrink-0" style={{ borderColor: 'rgba(56,130,220,0.25)' }}>
-              <button onClick={() => openFullDetail(selectedEnt)}
-                className="flex items-center gap-1.5 px-3 py-[5px] text-[11px] rounded-[3px] text-white transition-colors"
-                style={{ background: 'linear-gradient(135deg,#1e6fff,#4de3ff)' }}>
-                <Eye className="w-3.5 h-3.5" />一企一档
-              </button>
               <button onClick={() => setReportEnt(selectedEnt)}
                 className="flex items-center gap-1.5 px-3 py-[5px] text-[11px] rounded-[3px] text-[#c9a7ff] transition-colors hover:brightness-150"
                 style={{ background: 'rgba(139,92,246,.18)', border: '1px solid rgba(139,92,246,.45)' }}>
@@ -943,8 +935,7 @@ export default function Cockpit() {
         )}
       </div>
 
-      {/* 一企一档抽屉 + 弹窗 */}
-      <EnterpriseDetail />
+      {/* 报告 / 设备弹窗 */}
       <ReportModal open={!!reportEnt} onClose={() => setReportEnt(null)} enterprise={reportEnt} />
       <DeviceInfoModal open={!!deviceEnt} onClose={() => setDeviceEnt(null)} enterprise={deviceEnt} />
     </div>
