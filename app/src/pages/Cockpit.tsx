@@ -9,8 +9,8 @@ import ReportModal from '@/components/ReportModal';
 import DeviceInfoModal from '@/components/DeviceInfoModal';
 import {
   Building2, ClipboardCheck, Wrench, FileCog, ArrowLeft, Maximize, Minimize,
-  XCircle, FileWarning, AlertTriangle, Volume2, MapPin, MousePointerClick,
-  ChevronLeft, ChevronRight, Eye, FileText, Cpu, Clock, X,
+  XCircle, FileWarning, AlertTriangle, Volume2, MapPin,
+  ChevronLeft, ChevronRight, Eye, FileText, Cpu, Clock, X, Phone, User,
 } from 'lucide-react';
 
 // ─── 设计稿基准分辨率（整体等比缩放适配） ─────────────────
@@ -142,7 +142,7 @@ function riskLevel(e: Enterprise): { label: string; cls: string } {
   return { label: '低', cls: 'text-[#1fd0a2] border-[#1fd0a2]/50 bg-[#1fd0a2]/10' };
 }
 
-// ─── 地图缩略图（引导区 / 位置定位共用） ──────────────────
+// ─── 地图缩略图（位置定位用） ────────────────────────────
 function MapThumb({ markers, className = '' }: {
   markers: { x: number; y: number; color?: string; size?: number }[];
   className?: string;
@@ -163,6 +163,29 @@ function MapThumb({ markers, className = '' }: {
             }} />
         );
       })}
+    </div>
+  );
+}
+
+// ─── 详情小节（深色主题） ────────────────────────────────
+function DSection({ title, icon, children }: { title: string; icon?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="rounded-[4px] border px-3 py-2.5"
+      style={{ background: 'rgba(30,80,160,.10)', borderColor: 'rgba(56,130,220,0.2)' }}>
+      <div className="flex items-center gap-1.5 mb-2 text-[12px] font-bold text-[#9fd0ff]">
+        {icon}
+        {title}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function DRow({ k, v, cls = 'text-[#c9e2ff]' }: { k: string; v: React.ReactNode; cls?: string }) {
+  return (
+    <div className="flex justify-between gap-2 py-[2px]">
+      <span className="text-[#5f83b8] flex-shrink-0">{k}</span>
+      <span className={`text-right truncate ${cls}`}>{v}</span>
     </div>
   );
 }
@@ -302,7 +325,7 @@ export default function Cockpit() {
     : 0;
 
   // 浮层表格分页
-  const PAGE_SIZE = 5;
+  const PAGE_SIZE = 6;
   const clusterList = selectedCluster?.enterprises ?? [];
   const totalPages = Math.max(1, Math.ceil(clusterList.length / PAGE_SIZE));
   const pageList = clusterList.slice((tablePage - 1) * PAGE_SIZE, tablePage * PAGE_SIZE);
@@ -660,187 +683,263 @@ export default function Cockpit() {
           </div>
         </div>
 
-        {/* ═══ 点击聚合点后的企业列表浮层 ═══ */}
+        {/* ═══ 点击聚合点 → 企业列表浮层 ═══ */}
         {selectedCluster && (
           <>
             <div className="absolute inset-0 z-40" style={{ background: 'rgba(1,6,15,.6)' }} onClick={closeOverlay} />
-            <div className="absolute inset-x-3 bottom-3 z-50 h-[280px] grid gap-2.5" style={{ gridTemplateColumns: '280px 1fr 430px' }}>
-              {/* 操作引导 */}
-              <div className="rounded-[4px] border relative overflow-hidden flex"
-                style={{ background: 'linear-gradient(180deg, rgba(15,40,88,0.92), rgba(7,20,48,0.92))', borderColor: 'rgba(56,130,220,0.38)' }}>
-                <div className="w-[108px] flex flex-col justify-center px-3.5 flex-shrink-0">
-                  <MousePointerClick className="w-6 h-6 text-[#4de3ff] mb-2" />
-                  <div className="text-[15px] font-bold text-[#4de3ff] leading-snug">点击聚合点<br />展开企业列表</div>
-                  <div className="text-[10px] text-[#5f83b8] mt-2 leading-relaxed">地图上聚合点为该片区域企业数量，点击可查看详细企业列表</div>
-                </div>
-                <MapThumb className="flex-1"
-                  markers={clusters.map(c => ({
-                    x: c.x, y: c.y,
-                    color: clusterColor(c.enterprises.length),
-                    size: c.key === selectedCluster.key ? 13 : 8,
-                  }))} />
+            <div className="absolute left-[220px] right-[220px] bottom-3 z-50 h-[300px] rounded-[4px] border flex flex-col overflow-hidden"
+              style={{ background: 'linear-gradient(180deg, rgba(15,40,88,0.94), rgba(7,20,48,0.94))', borderColor: 'rgba(56,130,220,0.45)', boxShadow: '0 0 40px rgba(10,40,110,.5)' }}>
+              <div className="flex items-center gap-2 px-3 h-[38px] flex-shrink-0 border-b" style={{ borderColor: 'rgba(56,130,220,0.22)' }}>
+                <span className="w-[3px] h-[14px] rounded-full" style={{ background: 'linear-gradient(180deg,#4de3ff,#1e6fff)' }} />
+                <span className="text-[14px] font-bold text-[#dcecff]">
+                  聚合点企业列表（{clusterList.length} 家）
+                </span>
+                <span className="text-[11px] text-[#5f83b8] ml-1">{selectedCluster.name}</span>
+                <span className="flex-1" />
+                <button onClick={closeOverlay} className="text-[#7fa8d9] hover:text-white transition-colors">
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-
-              {/* 聚合点企业列表 */}
-              <div className="rounded-[4px] border flex flex-col overflow-hidden"
-                style={{ background: 'linear-gradient(180deg, rgba(15,40,88,0.92), rgba(7,20,48,0.92))', borderColor: 'rgba(56,130,220,0.38)' }}>
-                <div className="flex items-center gap-2 px-3 h-[34px] flex-shrink-0 border-b" style={{ borderColor: 'rgba(56,130,220,0.22)' }}>
-                  <span className="w-[3px] h-[13px] rounded-full" style={{ background: 'linear-gradient(180deg,#4de3ff,#1e6fff)' }} />
-                  <span className="text-[13px] font-bold text-[#dcecff]">
-                    聚合点企业列表（{clusterList.length} 家）
-                  </span>
-                  <span className="text-[10px] text-[#5f83b8] ml-1">{selectedCluster.name}</span>
-                  <span className="flex-1" />
-                  <button onClick={closeOverlay} className="text-[#7fa8d9] hover:text-white transition-colors">
-                    <X className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="flex-1 min-h-0 overflow-hidden">
-                  <table className="w-full text-[11px]">
-                    <thead>
-                      <tr className="text-[#7fa8d9]" style={{ background: 'rgba(30,80,160,.22)' }}>
-                        {['序号', '企业名称', '经营类型', '净化设施状态', '在线状态', '最近清洗时间', '排放状态', '风险等级', '操作'].map(h => (
-                          <th key={h} className="px-2 py-[6px] font-normal text-left whitespace-nowrap">{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {pageList.map((e, i) => {
-                        const risk = riskLevel(e);
-                        const online = (e.devices ?? []).some(d => d.online);
-                        return (
-                          <tr key={e.id}
-                            className={`border-t transition-colors cursor-pointer ${selectedEnt?.id === e.id ? 'bg-[#1e6fff]/20' : 'hover:bg-[#1e6fff]/10'}`}
-                            style={{ borderColor: 'rgba(56,130,220,0.14)' }}
-                            onClick={() => setSelectedEnt(e)}>
-                            <td className="px-2 py-[6px] text-[#7fa8d9] font-mono">{(tablePage - 1) * PAGE_SIZE + i + 1}</td>
-                            <td className="px-2 py-[6px] text-[#e6f3ff] whitespace-nowrap max-w-[130px] truncate">{e.storeName}</td>
-                            <td className="px-2 py-[6px] text-[#a9c8ec]">{e.businessType}</td>
-                            <td className="px-2 py-[6px]">{e.hasPretreatment ? <span className="text-[#1fd0a2]">正常</span> : <span className="text-[#ff9f43]">未安装</span>}</td>
-                            <td className="px-2 py-[6px]">{online ? <span className="text-[#4de3ff]">在线</span> : <span className="text-[#7fa8d9]">离线</span>}</td>
-                            <td className="px-2 py-[6px] text-[#a9c8ec] font-mono">{e.lastMaintenanceDate || '—'}</td>
-                            <td className="px-2 py-[6px]">{e.emissionExceed === '超标' ? <span className="text-[#ff4d5e] font-bold">超标</span> : <span className="text-[#1fd0a2]">正常</span>}</td>
-                            <td className="px-2 py-[6px]">
-                              <span className={`px-1.5 py-0.5 rounded-[3px] border text-[10px] ${risk.cls}`}>{risk.label}</span>
-                            </td>
-                            <td className="px-2 py-[6px]">
-                              <button onClick={ev => { ev.stopPropagation(); setSelectedEnt(e); }}
-                                className="text-[#4de3ff] hover:text-white transition-colors">查看</button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                {/* 分页 */}
-                <div className="flex items-center justify-center gap-1.5 h-[30px] flex-shrink-0 border-t" style={{ borderColor: 'rgba(56,130,220,0.14)' }}>
-                  <button onClick={() => setTablePage(p => Math.max(1, p - 1))} disabled={tablePage === 1}
-                    className="p-1 rounded text-[#7fa8d9] hover:text-white disabled:opacity-30 transition-colors">
-                    <ChevronLeft className="w-3.5 h-3.5" />
-                  </button>
-                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                    let p: number;
-                    if (totalPages <= 5) p = i + 1;
-                    else if (tablePage <= 3) p = i + 1;
-                    else if (tablePage >= totalPages - 2) p = totalPages - 4 + i;
-                    else p = tablePage - 2 + i;
-                    return (
-                      <button key={p} onClick={() => setTablePage(p)}
-                        className={`w-[20px] h-[20px] text-[10px] rounded-[3px] font-mono transition-colors ${tablePage === p ? 'text-white' : 'text-[#7fa8d9] hover:text-white'}`}
-                        style={tablePage === p ? { background: 'linear-gradient(135deg,#1e6fff,#4de3ff)' } : { border: '1px solid rgba(56,130,220,.3)' }}>
-                        {p}
-                      </button>
-                    );
-                  })}
-                  <button onClick={() => setTablePage(p => Math.min(totalPages, p + 1))} disabled={tablePage === totalPages}
-                    className="p-1 rounded text-[#7fa8d9] hover:text-white disabled:opacity-30 transition-colors">
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                  <span className="text-[10px] text-[#5f83b8] ml-2">共{clusterList.length}条</span>
-                </div>
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <table className="w-full text-[12px]">
+                  <thead>
+                    <tr className="text-[#7fa8d9]" style={{ background: 'rgba(30,80,160,.22)' }}>
+                      {['序号', '企业名称', '经营类型', '净化设施状态', '在线状态', '最近清洗时间', '排放状态', '风险等级', '操作'].map(h => (
+                        <th key={h} className="px-3 py-[7px] font-normal text-left whitespace-nowrap">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pageList.map((e, i) => {
+                      const risk = riskLevel(e);
+                      const online = (e.devices ?? []).some(d => d.online);
+                      return (
+                        <tr key={e.id}
+                          className={`border-t transition-colors cursor-pointer ${selectedEnt?.id === e.id ? 'bg-[#1e6fff]/20' : 'hover:bg-[#1e6fff]/10'}`}
+                          style={{ borderColor: 'rgba(56,130,220,0.14)' }}
+                          onClick={() => setSelectedEnt(e)}>
+                          <td className="px-3 py-[7px] text-[#7fa8d9] font-mono">{(tablePage - 1) * PAGE_SIZE + i + 1}</td>
+                          <td className="px-3 py-[7px] text-[#e6f3ff] whitespace-nowrap max-w-[180px] truncate">{e.storeName}</td>
+                          <td className="px-3 py-[7px] text-[#a9c8ec]">{e.businessType}</td>
+                          <td className="px-3 py-[7px]">{e.hasPretreatment ? <span className="text-[#1fd0a2]">正常</span> : <span className="text-[#ff9f43]">未安装</span>}</td>
+                          <td className="px-3 py-[7px]">{online ? <span className="text-[#4de3ff]">在线</span> : <span className="text-[#7fa8d9]">离线</span>}</td>
+                          <td className="px-3 py-[7px] text-[#a9c8ec] font-mono">{e.lastMaintenanceDate || '—'}</td>
+                          <td className="px-3 py-[7px]">{e.emissionExceed === '超标' ? <span className="text-[#ff4d5e] font-bold">超标</span> : <span className="text-[#1fd0a2]">正常</span>}</td>
+                          <td className="px-3 py-[7px]">
+                            <span className={`px-1.5 py-0.5 rounded-[3px] border text-[10px] ${risk.cls}`}>{risk.label}</span>
+                          </td>
+                          <td className="px-3 py-[7px]">
+                            <button onClick={ev => { ev.stopPropagation(); setSelectedEnt(e); }}
+                              className="text-[#4de3ff] hover:text-white transition-colors">查看</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-
-              {/* 企业详情 */}
-              <div className="rounded-[4px] border flex overflow-hidden"
-                style={{ background: 'linear-gradient(180deg, rgba(15,40,88,0.92), rgba(7,20,48,0.92))', borderColor: 'rgba(56,130,220,0.38)' }}>
-                {selectedEnt ? (
-                  <>
-                    <div className="flex-1 min-w-0 px-3 py-2 flex flex-col">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[14px] font-bold text-[#e6f3ff] truncate">{selectedEnt.storeName}</span>
-                        <div className="flex gap-1 flex-shrink-0">
-                          <span className="px-1.5 py-0.5 rounded-[3px] text-[10px]" style={{ background: 'rgba(77,227,255,.15)', color: '#4de3ff', border: '1px solid rgba(77,227,255,.4)' }}>{selectedEnt.businessType}</span>
-                          <span className="px-1.5 py-0.5 rounded-[3px] text-[10px]" style={selectedEnt.emissionExceed === '超标'
-                            ? { background: 'rgba(255,77,94,.15)', color: '#ff4d5e', border: '1px solid rgba(255,77,94,.4)' }
-                            : { background: 'rgba(31,208,162,.15)', color: '#1fd0a2', border: '1px solid rgba(31,208,162,.4)' }}>
-                            {selectedEnt.emissionExceed === '超标' ? '超标' : '正常'}
-                          </span>
-                        </div>
-                      </div>
-                      {selectedEnt.panoramaPhotos[0] && (
-                        <img src={selectedEnt.panoramaPhotos[0]} alt="门店" className="w-full h-[62px] object-cover rounded-[3px] mt-1.5 opacity-90" />
-                      )}
-                      <div className="grid grid-cols-2 gap-x-2 gap-y-[4px] mt-2 text-[10px] flex-1">
-                        {[
-                          ['地址', selectedEnt.actualAddress],
-                          ['联系人', selectedEnt.owner],
-                          ['联系电话', selectedEnt.phone],
-                          ['净化设施', selectedEnt.hasPretreatment ? '正常' : '未安装'],
-                          ['在线状态', (selectedEnt.devices ?? []).some(d => d.online) ? '在线' : '离线'],
-                          ['最近清洗', selectedEnt.lastMaintenanceDate || '—'],
-                          ['排放状态', selectedEnt.emissionExceed === '超标' ? '超标' : '正常'],
-                          ['风险等级', riskLevel(selectedEnt).label],
-                        ].map(([k, v]) => (
-                          <div key={k} className="flex gap-1 truncate">
-                            <span className="text-[#5f83b8] flex-shrink-0">{k}：</span>
-                            <span className="text-[#c9e2ff] truncate">{v}</span>
-                          </div>
-                        ))}
-                      </div>
-                      <div className="flex gap-1.5 mt-1.5">
-                        <button onClick={() => openFullDetail(selectedEnt)}
-                          className="flex items-center gap-1 px-2 py-[3px] text-[10px] rounded-[3px] text-white transition-colors"
-                          style={{ background: 'linear-gradient(135deg,#1e6fff,#4de3ff)' }}>
-                          <Eye className="w-3 h-3" />一企一档
-                        </button>
-                        <button onClick={() => setReportEnt(selectedEnt)}
-                          className="flex items-center gap-1 px-2 py-[3px] text-[10px] rounded-[3px] text-[#c9a7ff] transition-colors hover:brightness-150"
-                          style={{ background: 'rgba(139,92,246,.18)', border: '1px solid rgba(139,92,246,.45)' }}>
-                          <FileText className="w-3 h-3" />报告
-                        </button>
-                        <button onClick={() => setDeviceEnt(selectedEnt)}
-                          className="flex items-center gap-1 px-2 py-[3px] text-[10px] rounded-[3px] text-[#7ef0d4] transition-colors hover:brightness-150"
-                          style={{ background: 'rgba(31,208,162,.14)', border: '1px solid rgba(31,208,162,.45)' }}>
-                          <Cpu className="w-3 h-3" />设备
-                        </button>
-                      </div>
-                    </div>
-                    <div className="w-[150px] flex-shrink-0 border-l flex flex-col" style={{ borderColor: 'rgba(56,130,220,0.22)' }}>
-                      <div className="flex items-center gap-1 px-2 h-[26px] text-[10px] text-[#7fa8d9] border-b flex-shrink-0" style={{ borderColor: 'rgba(56,130,220,0.22)' }}>
-                        <MapPin className="w-3 h-3 text-[#4de3ff]" />位置定位
-                      </div>
-                      <div className="flex-1 relative">
-                        {selectedPos && (
-                          <MapThumb className="absolute inset-0"
-                            markers={[{ x: selectedPos.x, y: selectedPos.y, color: '#ff4d5e', size: 10 }]} />
-                        )}
-                        <div className="absolute inset-x-0 bottom-0 px-1.5 py-1 text-[9px] text-[#9fd0ff] truncate text-center"
-                          style={{ background: 'rgba(3,12,30,.75)' }}>
-                          {selectedEnt.actualAddress}
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center text-[#5f83b8] gap-2">
-                    <Building2 className="w-8 h-8 opacity-40" />
-                    <span className="text-[11px] text-center">在企业列表中点击「查看」<br />此处展示企业详情</span>
-                  </div>
-                )}
+              {/* 分页 */}
+              <div className="flex items-center justify-center gap-1.5 h-[32px] flex-shrink-0 border-t" style={{ borderColor: 'rgba(56,130,220,0.14)' }}>
+                <button onClick={() => setTablePage(p => Math.max(1, p - 1))} disabled={tablePage === 1}
+                  className="p-1 rounded text-[#7fa8d9] hover:text-white disabled:opacity-30 transition-colors">
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                  let p: number;
+                  if (totalPages <= 5) p = i + 1;
+                  else if (tablePage <= 3) p = i + 1;
+                  else if (tablePage >= totalPages - 2) p = totalPages - 4 + i;
+                  else p = tablePage - 2 + i;
+                  return (
+                    <button key={p} onClick={() => setTablePage(p)}
+                      className={`w-[20px] h-[20px] text-[10px] rounded-[3px] font-mono transition-colors ${tablePage === p ? 'text-white' : 'text-[#7fa8d9] hover:text-white'}`}
+                      style={tablePage === p ? { background: 'linear-gradient(135deg,#1e6fff,#4de3ff)' } : { border: '1px solid rgba(56,130,220,.3)' }}>
+                      {p}
+                    </button>
+                  );
+                })}
+                <button onClick={() => setTablePage(p => Math.min(totalPages, p + 1))} disabled={tablePage === totalPages}
+                  className="p-1 rounded text-[#7fa8d9] hover:text-white disabled:opacity-30 transition-colors">
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+                <span className="text-[10px] text-[#5f83b8] ml-2">共{clusterList.length}条</span>
               </div>
             </div>
           </>
+        )}
+
+        {/* ═══ 点击企业 → 右侧企业详情抽屉（深色科技风，内容与一企一档一致） ═══ */}
+        {selectedEnt && (
+          <div className="absolute top-3 bottom-3 right-3 z-[60] w-[560px] rounded-[4px] border flex flex-col overflow-hidden"
+            style={{ background: 'linear-gradient(180deg, rgba(10,26,58,0.97), rgba(5,14,34,0.97))', borderColor: 'rgba(63,210,255,0.45)', boxShadow: '0 0 50px rgba(10,50,120,.55)' }}>
+            {/* 详情头部 */}
+            <div className="flex items-start gap-2 px-4 pt-3 pb-2.5 border-b flex-shrink-0" style={{ borderColor: 'rgba(56,130,220,0.25)' }}>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-[16px] font-bold text-[#e6f3ff] truncate">{selectedEnt.storeName}</span>
+                  <span className="px-1.5 py-0.5 rounded-[3px] text-[10px] flex-shrink-0" style={{ background: 'rgba(77,227,255,.15)', color: '#4de3ff', border: '1px solid rgba(77,227,255,.4)' }}>{selectedEnt.businessType}</span>
+                  <span className={`px-1.5 py-0.5 rounded-[3px] border text-[10px] flex-shrink-0 ${riskLevel(selectedEnt).cls}`}>风险 {riskLevel(selectedEnt).label}</span>
+                </div>
+                <div className="text-[10px] text-[#5f83b8] mt-1 truncate">{selectedEnt.fullName}</div>
+              </div>
+              <button onClick={() => setSelectedEnt(null)} className="text-[#7fa8d9] hover:text-white transition-colors flex-shrink-0 mt-0.5">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* 详情内容（滚动区） */}
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-2.5 text-[11px]">
+              {/* 全景照片 */}
+              {selectedEnt.panoramaPhotos.length > 0 && (
+                <div className="grid grid-cols-3 gap-1.5">
+                  {selectedEnt.panoramaPhotos.slice(0, 3).map((p, idx) => (
+                    <img key={idx} src={p} alt="全景" className="w-full h-[64px] object-cover rounded-[3px] opacity-90" />
+                  ))}
+                </div>
+              )}
+
+              {/* 企业基本信息 */}
+              <DSection title="企业基本信息" icon={<Building2 className="w-3.5 h-3.5 text-[#4de3ff]" />}>
+                <div className="grid grid-cols-2 gap-x-3">
+                  <DRow k="统一社会信用代码" v={<span className="font-mono">{selectedEnt.creditCode}</span>} />
+                  <DRow k="所属街道" v={selectedEnt.street} />
+                  <DRow k="经营类型" v={<>{selectedEnt.businessType}{selectedEnt.otherBusinessType && <span className="text-[#ff9f43] ml-1">（{selectedEnt.otherBusinessType}）</span>}</>} />
+                  <DRow k="经营场所" v={selectedEnt.venueType} />
+                  <DRow k="企业规模" v={selectedEnt.scale} cls={selectedEnt.scale === '大型' ? 'text-[#ff4d5e]' : selectedEnt.scale === '中型' ? 'text-[#ffd32a]' : 'text-[#4de3ff]'} />
+                  <DRow k="对应灶头总功率" v={`${selectedEnt.stovePower} (10⁸ J/h)`} />
+                  <DRow k="最大基准灶头数" v={`${selectedEnt.maxStoveCount} 个`} />
+                  <DRow k="排气罩投影面积" v={`${selectedEnt.hoodArea} m²`} />
+                  <DRow k="营业时段" v={selectedEnt.businessHours} />
+                  <DRow k="负责人" v={<span className="inline-flex items-center gap-1"><User className="w-3 h-3 text-[#5f83b8]" />{selectedEnt.owner}</span>} />
+                  <DRow k="联系电话" v={<span className="inline-flex items-center gap-1 font-mono"><Phone className="w-3 h-3 text-[#5f83b8]" />{selectedEnt.phone}</span>} />
+                </div>
+                <div className="mt-1.5 pt-1.5 border-t" style={{ borderColor: 'rgba(56,130,220,0.15)' }}>
+                  <DRow k="营业执照地址" v={selectedEnt.licenseAddress} />
+                  <DRow k="实际经营地址" v={selectedEnt.actualAddress} />
+                </div>
+              </DSection>
+
+              {/* 位置定位 */}
+              <DSection title="位置定位" icon={<MapPin className="w-3.5 h-3.5 text-[#4de3ff]" />}>
+                {selectedPos && (
+                  <MapThumb className="h-[130px] rounded-[3px] border" 
+                    markers={[{ x: selectedPos.x, y: selectedPos.y, color: '#ff4d5e', size: 10 }]} />
+                )}
+                <div className="grid grid-cols-2 gap-x-3 mt-1.5">
+                  <DRow k="GPS坐标" v={<span className="font-mono">{selectedEnt.longitude.toFixed(4)}, {selectedEnt.latitude.toFixed(4)}</span>} />
+                  <DRow k="周边敏感点" v={`${selectedEnt.sensitiveType}（${selectedEnt.sensitiveDistance}m）`} />
+                </div>
+              </DSection>
+
+              {/* 合规登记情况 */}
+              <DSection title="合规登记情况" icon={<ClipboardCheck className="w-3.5 h-3.5 text-[#1fd0a2]" />}>
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="rounded-[3px] px-2.5 py-2" style={{ background: 'rgba(10,30,66,.5)', border: '1px solid rgba(56,130,220,.2)' }}>
+                    <div className="text-[#5f83b8] text-[10px]">排污许可证</div>
+                    <div className={`font-bold mt-0.5 ${selectedEnt.pollutionPermit.status === '已办理' ? 'text-[#1fd0a2]' : selectedEnt.pollutionPermit.status === '已过期' ? 'text-[#ff9f43]' : 'text-[#7fa8d9]'}`}>
+                      {selectedEnt.pollutionPermit.status}
+                    </div>
+                    {selectedEnt.pollutionPermit.licenseNo && <div className="text-[10px] text-[#5f83b8] font-mono mt-0.5">{selectedEnt.pollutionPermit.licenseNo}</div>}
+                    {selectedEnt.pollutionPermit.expiryDate && <div className="text-[10px] text-[#5f83b8]">有效期至：{selectedEnt.pollutionPermit.expiryDate}</div>}
+                  </div>
+                  <div className="rounded-[3px] px-2.5 py-2" style={{ background: 'rgba(10,30,66,.5)', border: '1px solid rgba(56,130,220,.2)' }}>
+                    <div className="text-[#5f83b8] text-[10px]">环保备案</div>
+                    <div className={`font-bold mt-0.5 ${selectedEnt.envRecord === '已备案' ? 'text-[#1fd0a2]' : 'text-[#7fa8d9]'}`}>{selectedEnt.envRecord}</div>
+                  </div>
+                </div>
+              </DSection>
+
+              {/* 油烟净化设施 */}
+              <DSection title="油烟净化设施" icon={<Wrench className="w-3.5 h-3.5 text-[#4de3ff]" />}>
+                <DRow k="是否安装" v={selectedEnt.hasPretreatment ? '已安装' : '未安装'} cls={selectedEnt.hasPretreatment ? 'text-[#1fd0a2]' : 'text-[#ff9f43]'} />
+                {selectedEnt.hasPretreatment ? (
+                  <>
+                    <DRow k="设施类型" v={<>{selectedEnt.facilityType}{selectedEnt.otherFacilityType && <span className="text-[#ff9f43] ml-1">（{selectedEnt.otherFacilityType}）</span>}</>} />
+                    <DRow k="清洗周期" v={selectedEnt.cleaningCycle && selectedEnt.cleaningCycleNumber > 0 ? `每${selectedEnt.cleaningCycleNumber}${selectedEnt.cleaningCycle}清洗一次` : '未填写'} />
+                    <DRow k="最近维护日期" v={<span className="font-mono">{selectedEnt.lastMaintenanceDate}</span>} />
+                    <DRow k="CMA检测报告" v={selectedEnt.hasCMA ? '有' : '无'} cls={selectedEnt.hasCMA ? 'text-[#1fd0a2]' : 'text-[#7fa8d9]'} />
+                    {selectedEnt.cmaReportNo && <DRow k="报告编号" v={<span className="font-mono">{selectedEnt.cmaReportNo}</span>} />}
+                  </>
+                ) : (
+                  <div className="text-[#7fa8d9] text-[10px] mt-1">{selectedEnt.noPretreatmentReason}</div>
+                )}
+                {selectedEnt.facilityPhotos.length > 0 && (
+                  <div className="grid grid-cols-3 gap-1.5 mt-2">
+                    {selectedEnt.facilityPhotos.slice(0, 3).map((p, idx) => (
+                      <img key={idx} src={p} alt="设施" className="w-full h-[52px] object-cover rounded-[3px] opacity-90" />
+                    ))}
+                  </div>
+                )}
+              </DSection>
+
+              {/* 管道与排放口 */}
+              {(selectedEnt.indoorPipePhotos.length > 0 || selectedEnt.outdoorPipePhotos.length > 0) && (
+                <DSection title="管道与排放口" icon={<FileCog className="w-3.5 h-3.5 text-[#4de3ff]" />}>
+                  <div className="grid grid-cols-2 gap-2">
+                    {selectedEnt.indoorPipePhotos[0] && (
+                      <div>
+                        <div className="text-[#5f83b8] text-[10px] mb-1">室内管道</div>
+                        <img src={selectedEnt.indoorPipePhotos[0]} alt="室内管道" className="w-full h-[72px] object-cover rounded-[3px] opacity-90" />
+                      </div>
+                    )}
+                    {selectedEnt.outdoorPipePhotos[0] && (
+                      <div>
+                        <div className="text-[#5f83b8] text-[10px] mb-1">外立面管道/排放口</div>
+                        <img src={selectedEnt.outdoorPipePhotos[0]} alt="外立面管道" className="w-full h-[72px] object-cover rounded-[3px] opacity-90" />
+                      </div>
+                    )}
+                  </div>
+                </DSection>
+              )}
+
+              {/* 噪声排放登记 */}
+              <DSection title="噪声排放登记" icon={<Volume2 className="w-3.5 h-3.5 text-[#ffd32a]" />}>
+                <DRow k="主要噪声源" v={<>{selectedEnt.noiseSources.join('、') || '无'}{selectedEnt.otherNoiseSource && <span className="text-[#ff9f43] ml-1">（其他：{selectedEnt.otherNoiseSource}）</span>}</>} />
+                <DRow k="降噪措施" v={selectedEnt.noiseMeasures.join('、') || '无'} />
+                <DRow k="扰民投诉记录" v={selectedEnt.noiseComplaint ? '有' : '无'} cls={selectedEnt.noiseComplaint ? 'text-[#ff9f43]' : 'text-[#1fd0a2]'} />
+                {selectedEnt.noiseComplaintDesc && <DRow k="投诉情况" v={selectedEnt.noiseComplaintDesc} />}
+                <DRow k="噪声排放" v={selectedEnt.noiseExceed} cls={selectedEnt.noiseExceed === '达标无扰民' ? 'text-[#1fd0a2]' : 'text-[#ff9f43]'} />
+              </DSection>
+
+              {/* 现场排查记录 */}
+              <DSection title="现场排查记录" icon={<ClipboardCheck className="w-3.5 h-3.5 text-[#4de3ff]" />}>
+                <DRow k="油烟直排自然环境" v={selectedEnt.directDischarge ? '存在' : '不存在'} cls={selectedEnt.directDischarge ? 'text-[#ff9f43]' : 'text-[#1fd0a2]'} />
+                {selectedEnt.directDischargeLocation && <DRow k="直排位置" v={selectedEnt.directDischargeLocation} />}
+                <DRow k="设施配置情况" v={selectedEnt.facilityMissing} cls={selectedEnt.facilityMissing === '全部配置' ? 'text-[#1fd0a2]' : 'text-[#ff9f43]'} />
+                <DRow k="油烟排放" v={<>{selectedEnt.emissionExceed}{selectedEnt.emissionExceedValue ? ` (${selectedEnt.emissionExceedValue})` : ''}</>} cls={selectedEnt.emissionExceed === '达标' ? 'text-[#1fd0a2]' : 'text-[#ff4d5e] font-bold'} />
+              </DSection>
+
+              {/* 排查登记信息 */}
+              {selectedEnt.status === '已排查' && (
+                <DSection title="排查登记信息" icon={<Clock className="w-3.5 h-3.5 text-[#4de3ff]" />}>
+                  <div className="grid grid-cols-2 gap-x-3">
+                    <DRow k="排查日期" v={<span className="font-mono">{selectedEnt.inspectionDate}</span>} />
+                    <DRow k="现场调查人" v={selectedEnt.inspector} />
+                    {selectedEnt.reviewer && <DRow k="数据复核人" v={selectedEnt.reviewer} />}
+                  </div>
+                </DSection>
+              )}
+            </div>
+
+            {/* 底部操作 */}
+            <div className="flex gap-2 px-4 py-2.5 border-t flex-shrink-0" style={{ borderColor: 'rgba(56,130,220,0.25)' }}>
+              <button onClick={() => openFullDetail(selectedEnt)}
+                className="flex items-center gap-1.5 px-3 py-[5px] text-[11px] rounded-[3px] text-white transition-colors"
+                style={{ background: 'linear-gradient(135deg,#1e6fff,#4de3ff)' }}>
+                <Eye className="w-3.5 h-3.5" />一企一档
+              </button>
+              <button onClick={() => setReportEnt(selectedEnt)}
+                className="flex items-center gap-1.5 px-3 py-[5px] text-[11px] rounded-[3px] text-[#c9a7ff] transition-colors hover:brightness-150"
+                style={{ background: 'rgba(139,92,246,.18)', border: '1px solid rgba(139,92,246,.45)' }}>
+                <FileText className="w-3.5 h-3.5" />报告
+              </button>
+              <button onClick={() => setDeviceEnt(selectedEnt)}
+                className="flex items-center gap-1.5 px-3 py-[5px] text-[11px] rounded-[3px] text-[#7ef0d4] transition-colors hover:brightness-150"
+                style={{ background: 'rgba(31,208,162,.14)', border: '1px solid rgba(31,208,162,.45)' }}>
+                <Cpu className="w-3.5 h-3.5" />设备信息
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
