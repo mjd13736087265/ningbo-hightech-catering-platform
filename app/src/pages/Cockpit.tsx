@@ -687,8 +687,8 @@ export default function Cockpit() {
         {selectedCluster && (
           <>
             <div className="absolute inset-0 z-40" style={{ background: 'rgba(1,6,15,.6)' }} onClick={closeOverlay} />
-            <div className="absolute left-[220px] right-[220px] bottom-3 z-50 h-[300px] rounded-[4px] border flex flex-col overflow-hidden"
-              style={{ background: 'linear-gradient(180deg, rgba(15,40,88,0.94), rgba(7,20,48,0.94))', borderColor: 'rgba(56,130,220,0.45)', boxShadow: '0 0 40px rgba(10,40,110,.5)' }}>
+            <div className="absolute left-1/2 top-1/2 z-50 w-[1180px] h-[320px] rounded-[4px] border flex flex-col overflow-hidden"
+              style={{ transform: 'translate(-50%,-50%)', background: 'linear-gradient(180deg, rgba(15,40,88,0.94), rgba(7,20,48,0.94))', borderColor: 'rgba(56,130,220,0.45)', boxShadow: '0 0 40px rgba(10,40,110,.5)' }}>
               <div className="flex items-center gap-2 px-3 h-[38px] flex-shrink-0 border-b" style={{ borderColor: 'rgba(56,130,220,0.22)' }}>
                 <span className="w-[3px] h-[14px] rounded-full" style={{ background: 'linear-gradient(180deg,#4de3ff,#1e6fff)' }} />
                 <span className="text-[14px] font-bold text-[#dcecff]">
